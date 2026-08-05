@@ -1,2 +1,71 @@
-# lazy-ops-ai
-# lazy-review
+<p align="center">
+  <img src="frontend/public/resources/images/logo.png" width="200" alt="Lazy Review Logo">
+</p>
+
+# Lazy Review
+
+Lazy Review is an offline-first AI code reviewer. It provides a full-stack environment (CLI and Web UI) for downloading repositories, generating automated AI code reviews, and searching through your codebase using local AI models.
+
+## 🚀 Features
+
+- **Local & Offline AI Reviews:** Built-in integration with the QVAC SDK for fully offline AI code reviews, ensuring complete privacy.
+- **Repository Management:** Easily connect to GitHub, download repositories, and manage your local codebases via an intuitive React UI.
+- **Semantic Code Search:** Leverages local vector embeddings to allow you to semantically search your codebase.
+- **100% Offline AI Support:** Built exclusively on top of the QVAC SDK, ensuring your code never leaves your local machine.
+
+## 🛠️ Tech Stack & Architecture
+
+Lazy Review uses a full-stack architecture designed for local AI inference:
+
+### Backend
+
+- **Node.js & Express.js:** The core server providing REST APIs for GitHub integration, AI providers, and project management.
+- **QVAC Server Integration (`@qvac/sdk`):** Provides the ability to download, manage, and run local open-weight AI models (e.g., Qwen, GTE) directly on your machine. This ensures code privacy and allows the reviewer to function completely offline.
+- **LangChain:** Framework for orchestrating the AI sub-agents, seamlessly integrated with the QVAC SDK.
+- **WebSockets (`socket.io`):** Facilitates real-time, bi-directional communication to stream project creation logs and live agent terminal outputs to the frontend.
+
+### Database & Storage
+
+- **SQLite (`better-sqlite3` & `typeorm`):** A lightweight, fast relational database used to store project configurations, GitHub repository metadata, and AI provider settings locally.
+- **Vector Database (`sqlite-vec`):** We leverage the `sqlite-vec` extension to use SQLite as a local vector database. This is used in tandem with local embedding models (like GTE_LARGE) to store code embeddings, enabling fast, semantic similarity searches across your codebase without relying on external cloud vector stores.
+
+### Frontend
+
+- **React & Vite:** A web UI scaffolding.
+- **Component Architecture:** A highly modular, responsive design (featuring Dark/Light modes) with tailored components for the Dashboard, Deployment Terminal, AI Provider settings, and Repo Selection.
+
+## 📦 Getting Started
+
+### Prerequisites
+
+- Node.js (v18+)
+- pnpm package manager
+
+### Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone <your-repo-url>
+   cd lazy-review
+   ```
+
+2. Install dependencies for both the backend and frontend:
+
+   ```bash
+   pnpm install
+   ```
+
+3. Run the development environment:
+
+   ```bash
+   pnpm run dev
+   ```
+
+   This will start both the Express backend server (default port `16500`) and the Vite frontend concurrently.
+
+4. Open your browser and navigate to the frontend URL (typically `http://localhost:5173`) to start using Lazy Review!
+
+## 📜 License
+
+MIT License

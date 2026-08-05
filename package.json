@@ -1,0 +1,93 @@
+{
+  "type": "module",
+  "name": "lazy-review",
+  "version": "0.0.1",
+  "description": "",
+  "bin": {
+    "lazy-review": "./dist/bin.js"
+  },
+  "main": "dist/bin.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 0",
+    "dev": "concurrently \"pnpm:watch\" \"pnpm:link-watch\" \"pnpm:frontend:dev\"",
+    "dev:server": "nodemon --watch dist --ext js dist/dev.js",
+    "dev:local": "concurrently \"pnpm:watch\" \"pnpm:dev:server\" \"pnpm:frontend:dev\"",
+    "watch": "tsc --watch",
+    "build": "tsc && cp .env dist/ || true",
+    "clean": "rm -rf dist",
+    "frontend:dev": "cd frontend && pnpm run dev",
+    "frontend:build": "cd frontend && pnpm run build",
+    "postbuild": "chmod +x dist/bin.js",
+    "prod:build": "pnpm run clean && pnpm run build && pnpm run frontend:build",
+    "link": "pnpm run postbuild && pnpm run prod:build && pnpm link --global",
+    "link-watch": "nodemon --watch dist --ext js --exec \"pnpm link --global\"",
+    "lint": "eslint \"src/**/*.ts\"",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.37.0",
+    "@types/chalk-animation": "^1.6.3",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.6.2",
+    "@types/ssh2": "^1.15.5",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "husky": "^9.1.7",
+    "nodemon": "^3.1.10",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.45.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ec2": "^3.1066.0",
+    "@aws-sdk/client-s3": "^3.1066.0",
+    "@langchain/anthropic": "^1.4.0",
+    "@langchain/core": "^1.1.48",
+    "@langchain/google-genai": "^2.1.31",
+    "@langchain/openai": "^1.4.7",
+    "@octokit/core": "^7.0.6",
+    "@qvac/sdk": "^0.16.0",
+    "@types/cors": "^2.8.19",
+    "bare-runtime-darwin-x64": "^1.30.3",
+    "better-sqlite3": "^12.10.0",
+    "chalk": "^5.6.2",
+    "chalk-animation": "^2.0.3",
+    "commander": "^14.0.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "inquirer": "^12.9.6",
+    "octokit": "^5.0.5",
+    "open": "^10.2.0",
+    "ora": "^9.0.0",
+    "reflect-metadata": "^0.2.2",
+    "simple-git": "^3.36.0",
+    "socket.io": "^4.8.3",
+    "sqlite-vec": "^0.1.9",
+    "sqlite3": "^6.0.1",
+    "ssh2": "^1.17.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "typeorm": "^1.0.0",
+    "uuid": "^13.0.0",
+    "zod": "^4.4.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.2",
+  "files": [
+    "dist"
+  ],
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "sqlite3"
+    ]
+  }
+}

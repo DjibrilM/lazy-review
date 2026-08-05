@@ -1,0 +1,15 @@
+{
+  "models": {
+    "coding-llm": {
+      "model": "QWEN2.5_CODER_7B_Q4",
+      "preload": true,
+      "config": {
+        "tools": true
+      }
+    },
+    "embedding-model": {
+      "model": "GTE_LARGE_FP16",
+      "preload": true
+    }
+  }
+}

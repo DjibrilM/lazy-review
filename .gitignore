@@ -1,0 +1,19 @@
+node_modules
+dist
+package-lock.json
+yarn.lock
+current_task.md
+yarn-error.log
+
+# Database files
+sql/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+.env
+.env.*
+.env.local
