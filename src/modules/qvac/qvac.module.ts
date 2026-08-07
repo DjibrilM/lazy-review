@@ -4,6 +4,7 @@ import os from 'os';
 import * as qvacModels from '@qvac/sdk';
 import { getModelInfo, downloadAsset, unloadModel } from '@qvac/sdk';
 import type { MainModule } from '../main.module.js';
+import { QWEN_MODEL_ID, GTE_MODEL_ID } from '../../constants.js';
 
 export interface QvacModelConfig {
   id: string;
@@ -12,8 +13,8 @@ export interface QvacModelConfig {
 }
 
 export const QVAC_MODELS: QvacModelConfig[] = [
-  { id: 'QWEN3_4B_INST_Q4_K_M', name: 'Coding LLM (Qwen 3 4B)', requiredRamGb: 5 },
-  { id: 'GTE_LARGE_FP16', name: 'Embedding Model (GTE Large)', requiredRamGb: 2 },
+  { id: QWEN_MODEL_ID, name: 'Coding LLM (Qwen 3 4B)', requiredRamGb: 5 },
+  { id: GTE_MODEL_ID, name: 'Embedding Model (GTE Large)', requiredRamGb: 2 },
 ];
 
 export class QvacModule {

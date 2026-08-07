@@ -1,16 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { BookOpen, GitPullRequest, FileText, Loader2 } from 'lucide-react';
+import { BookOpen, GitPullRequest, FileText, Loader2, RefreshCw, AlertTriangle, X } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { PRList } from '../components/PRList';
 import { CodebaseSummary } from '../components/CodebaseSummary';
 import { AIReviewSessionDialog } from '../components/AIReviewSessionDialog';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectService } from '@/services/project.service';
+import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
+
 export function RepositoryDetails() {
+
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [prToOpen, setPrToOpen] = useState(null);
+  const [isReindexing, setIsReindexing] = useState(false);
+  const [indexingError, setIndexingError] = useState<string | null>(null);
+  const [indexingLog, setIndexingLog] = useState<string[]>([]);
+  const [indexingDuration, setIndexingDuration] = useState(0);
 
   const { data: repo, isLoading } = useQuery({
     queryKey: ['local-project', id],
@@ -18,11 +28,83 @@ export function RepositoryDetails() {
     enabled: !!id,
   });
 
+  useSocketEffect({
+    onIndexingProgress: (data: any) => {
+      if (data.projectId && id && data.projectId !== id) return;
+
+      if (data.status === 'running') {
+        setIsReindexing(true);
+        setIndexingError(null);
+        if (data.message) {
+          setIndexingLog(prev => [...prev, data.message]);
+        }
+      } else if (data.status === 'success') {
+        setIsReindexing(false);
+        setIndexingError(null);
+        setIndexingLog([]);
+        queryClient.invalidateQueries({ queryKey: ['local-project', id] });
+      } else if (data.status === 'error') {
+        setIsReindexing(false);
+        setIndexingError(data.message || 'An unknown error occurred during indexing.');
+        setIndexingLog([]);
+        queryClient.invalidateQueries({ queryKey: ['local-project', id] });
+      }
+    }
+  });
+
+  const isCurrentlyIndexing = isReindexing || repo?.current_task === 'indexing';
+
+  useEffect(() => {
+    let interval: any;
+    if (isCurrentlyIndexing) {
+      interval = setInterval(() => {
+        setIndexingDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      setIndexingDuration(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isCurrentlyIndexing]);
+
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   if (isLoading) return <div className="p-8 text-muted-foreground flex items-center justify-center"><Loader2 className="animate-spin mr-2" /> Loading repository...</div>;
   if (!repo) return <div className="p-8 text-muted-foreground">Repository not found</div>;
 
   const handleSelectPR = (pr: any) => {
     navigate(`/repo/${repo.id}/review/${pr.number}`);
+  };
+
+  const handleReindex = async () => {
+    if (!repo) return;
+    try {
+      setIsReindexing(true);
+      setIndexingError(null);
+      setIndexingLog([]);
+      await projectService.reindexProject(repo.id);
+      toast.success('Re-indexing started successfully');
+    } catch (error: any) {
+      setIsReindexing(false);
+      toast.error(error.message || 'Failed to start re-indexing');
+    }
+  };
+
+  const handleCancelIndexing = async () => {
+    if (!repo) return;
+    try {
+      await projectService.cancelIndexing(repo.id);
+      setIsReindexing(false);
+      toast.success('Indexing cancellation request sent');
+      queryClient.invalidateQueries({ queryKey: ['local-project', id] });
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to cancel indexing');
+    }
   };
 
   return (
@@ -42,7 +124,73 @@ export function RepositoryDetails() {
             <span className="ml-2 text-xs text-muted-foreground border border-border rounded-full px-2 py-0.5">
               Local Clone
             </span>
+            <div className="flex-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReindex}
+              disabled={isCurrentlyIndexing}
+              className="gap-2 text-xs"
+            >
+              {isCurrentlyIndexing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {isCurrentlyIndexing ? 'Indexing...' : 'Re-index Project'}
+            </Button>
           </div>
+
+          {/* Live indexing log — shown while indexing is running */}
+          {isCurrentlyIndexing && (
+            <div className="mb-4 rounded-lg border border-border bg-muted/20 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                  <span className="text-xs font-mono text-muted-foreground font-semibold tracking-wide uppercase">Indexing in progress</span>
+                  <span className="text-[10px] font-mono text-blue-500 font-semibold bg-blue-500/10 px-1.5 py-0.5 rounded ml-1">
+                    {formatDuration(indexingDuration)}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={handleCancelIndexing}
+                  className="h-6 px-2 text-destructive hover:text-destructive hover:bg-destructive/10 gap-1 text-[10px] uppercase font-mono tracking-wider font-semibold"
+                >
+                  <X className="w-3 h-3" />
+                  Cancel
+                </Button>
+              </div>
+              <div className="p-3 max-h-40 overflow-y-auto flex flex-col gap-1 scroll-smooth">
+                {indexingLog.length > 0 ? (
+                  indexingLog.map((msg, i) => (
+                    <p key={i} className={`text-xs font-mono ${
+                      i === indexingLog.length - 1 ? 'text-foreground' : 'text-muted-foreground'
+                    }`}>
+                      {msg}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-xs font-mono text-muted-foreground italic">
+                    Awaiting progress updates...
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          {indexingError && (
+            <div className="mb-4 flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
+              <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-destructive">Indexing failed</p>
+                <p className="text-muted-foreground mt-0.5 break-all font-mono text-xs">{indexingError}</p>
+              </div>
+              <button
+                onClick={() => setIndexingError(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                aria-label="Dismiss error"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           <Tabs defaultValue="prs" className="w-full">
             <TabsList variant="line" className="justify-start mb-0 pb-0">
@@ -61,14 +209,14 @@ export function RepositoryDetails() {
 
             <div className="flex-1 overflow-auto p-6 lg:p-8 -mx-6 lg:-mx-8">
               <TabsContent value="prs">
-                <PRList 
-                  onSelectPR={setPrToOpen} 
-                  owner={repo.repository_url.split('/')[3] || 'unknown'} 
-                  repoName={repo.name} 
+                <PRList
+                  onSelectPR={setPrToOpen}
+                  owner={repo.repository_url.split('/')[3] || 'unknown'}
+                  repoName={repo.name}
                 />
               </TabsContent>
               <TabsContent value="summary">
-                <CodebaseSummary />
+                <CodebaseSummary initialFacts={repo.analysis} />
               </TabsContent>
             </div>
           </Tabs>

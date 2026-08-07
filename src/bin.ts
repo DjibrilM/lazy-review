@@ -2,9 +2,6 @@
 import 'reflect-metadata';
 
 import { Command } from 'commander';
-import { MainModule } from './modules/main.module.js';
-
-const programModule = new MainModule();
 
 const programDescription = 'Lazy Review - Offline AI Reviewer';
 const programName = 'lazy-review';
@@ -14,7 +11,9 @@ program
   .command('run')
   .description('Start the Lazy Review CLI')
   .option('-p, --port <number>', 'Port to run the server on')
-  .action(({ port }: { port: number }) => {
+  .action(async ({ port }: { port: number }) => {
+    const { MainModule } = await import('./modules/main.module.js');
+    const programModule = new MainModule();
     programModule.start({ port });
   });
 

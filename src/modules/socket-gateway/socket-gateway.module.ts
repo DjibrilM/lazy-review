@@ -33,4 +33,12 @@ export default class SocketModule {
   emitModelProgress(progress: any) {
     this.io.emit('model_progress', progress);
   }
+
+  emitIndexingProgress(progress: any) {
+    this.io.emit('indexing_progress', progress);
+  }
+
+  emitReviewProgress(progress: any) {
+    this.io.emit('review_progress', progress);
+  }
 }

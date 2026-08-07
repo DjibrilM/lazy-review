@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ChevronRight,
@@ -10,6 +10,8 @@ import {
   Send,
   FileText,
   MessageSquareMore,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
@@ -20,36 +22,17 @@ import Visibility from '@/components/common/Visible';
 import { useQuery } from '@tanstack/react-query';
 import { projectService } from '@/services/project.service';
 import { githubService } from '@/services/github.service';
+import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
 import { cn } from '@/lib/util/shared';
 
-const MOCK_COMMITS = [
-  {
-    id: '410ce1c',
-    message: 'feat: implement the referral program',
-    author: 'alice-dev',
-    time: '10 hours ago',
-  },
-  {
-    id: '5f23b9d',
-    message: 'feat: enhance referral program and UI components',
-    author: 'alice-dev',
-    time: '39 minutes ago',
-  },
-  {
-    id: '32b39cf',
-    message: 'refactor: update styling for InviteBenefitsCard',
-    author: 'alice-dev',
-    time: '37 minutes ago',
-  },
-  {
-    id: 'da37aeb',
-    message: 'refactor: remove unused icon from InvitePage',
-    author: 'alice-dev',
-    time: '36 minutes ago',
-  },
-];
-
 type TabType = 'pr_summary' | 'ai_review' | 'files';
+
+interface ChatMessage {
+  id: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  requiresConfirmation?: 'request_changes' | 'approve';
+}
 
 export function PRReview() {
   const { id, prId } = useParams();
@@ -64,6 +47,7 @@ export function PRReview() {
 
   const owner = repo?.repository_url?.split('/')[3] || '';
   const repoName = repo?.name || '';
+  const pullNumber = Number(prId);
 
   const { data: prs = [], isLoading: isLoadingPrs } = useQuery({
     queryKey: ['pull-requests', owner, repoName],
@@ -71,94 +55,206 @@ export function PRReview() {
     enabled: !!owner && !!repoName,
   });
 
-  const pr = prs.find((p: any) => p.number === Number(prId));
+  const pr = prs.find((p: any) => p.number === pullNumber);
 
-  const [messages, setMessages] = useState<any[]>([]);
+  // Real commits from GitHub
+  const { data: commits = [] } = useQuery({
+    queryKey: ['pr-commits', owner, repoName, pullNumber],
+    queryFn: () => githubService.getPRCommits(owner, repoName, pullNumber),
+    enabled: !!owner && !!repoName && !!pullNumber,
+  });
+
+  // Real PR diff
+  const { data: prDiff = '', isLoading: isLoadingDiff } = useQuery({
+    queryKey: ['pr-diff', owner, repoName, pullNumber],
+    queryFn: () => githubService.getPRDiff(owner, repoName, pullNumber),
+    enabled: !!owner && !!repoName && !!pullNumber,
+  });
+
+  // AI review state
+  const [review, setReview] = useState<any>(null);
+  const [reviewStatus, setReviewStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+  const [reviewMessage, setReviewMessage] = useState('');
+
+  // Chat state
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Accumulate LLM conversation history (assistant role for API, stripped for display)
+  const chatHistoryRef = useRef<{ role: string; content: string }[]>([]);
+
+  // Listen for review_progress socket events
+  useSocketEffect({
+    onReviewProgress: useCallback((data: any) => {
+      if (data.projectId && id && data.projectId !== id) return;
+      if (data.status === 'running') {
+        setReviewStatus('running');
+        setReviewMessage(data.message || 'Generating review...');
+      } else if (data.status === 'success') {
+        setReviewStatus('success');
+        setReview(data.review);
+        setReviewMessage('');
+        // Add system message to chat once review is ready
+        setMessages((prev) => {
+          if (prev.some((m) => m.role === 'system' && m.content.includes('Review complete'))) return prev;
+          return [
+            ...prev,
+            {
+              id: Date.now(),
+              role: 'system',
+              content: `✅ Review complete. Found ${data.review?.issues?.length ?? 0} issue(s). Ask me anything about this PR.`,
+            },
+          ];
+        });
+      } else if (data.status === 'error') {
+        setReviewStatus('error');
+        setReviewMessage(data.message || 'Review generation failed.');
+      }
+    }, [id]),
+  });
+
+  // Trigger AI review once diff is loaded
+  useEffect(() => {
+    if (!prDiff || !pr || !id || reviewStatus !== 'idle') return;
+    setReviewStatus('running');
+    setReviewMessage('🔍 Starting review...');
+    projectService
+      .generateReview(id, {
+        prDiff,
+        prTitle: pr.title || '',
+        prBody: pr.body || '',
+      })
+      .then((result) => {
+        if (result) {
+          setReview(result);
+          setReviewStatus('success');
+        }
+      })
+      .catch((err: any) => {
+        setReviewStatus('error');
+        setReviewMessage(err.message || 'Review failed');
+      });
+  }, [prDiff, pr, id]);
+
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Add initial system context message when PR data is ready
   useEffect(() => {
     if (pr && repo && messages.length === 0) {
       setMessages([
         {
           id: 1,
           role: 'system',
-          content: `Initialized Context Envelope: Analyzed PR #${pr.number} diff against ${repo.name} vector DB.`,
-        },
-        {
-          id: 2,
-          role: 'assistant',
-          content: `I have reviewed PR #${pr.number}. It refactors the \`authenticate\` function.\n\n**Architectural Warning:** The new implementation concatenates strings for the SQL query, which violates our convention defined in the Architectural Manifest and introduces a SQL injection vulnerability.`,
+          content: `Context loaded: PR #${pr.number} "${pr.title}" — ${commits.length} commit(s). AI review is generating...`,
         },
       ]);
     }
-  }, [pr, repo, messages.length]);
+  }, [pr, repo]);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  if (isLoadingRepo || isLoadingPrs) {
+    return (
+      <div className="p-8 flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading PR...
+      </div>
+    );
+  }
+  if (!repo || !pr) {
+    return <div className="p-8 text-muted-foreground">Repository or PR not found.</div>;
+  }
 
-  if (isLoadingRepo || isLoadingPrs) return <div className="p-8 text-muted-foreground">Loading PR...</div>;
-  if (!repo || !pr) return <div className="p-8 text-muted-foreground">Repository or PR not found.</div>;
-
-  const handleSend = () => {
-    if (!input.trim()) return;
-    const newMsg = { id: Date.now(), role: 'user', content: input };
-    setMessages((prev) => [...prev, newMsg]);
-
-    const userText = input.toLowerCase();
+  const handleSend = async () => {
+    if (!input.trim() || isChatLoading) return;
+    const userText = input.trim();
     setInput('');
 
-    setTimeout(() => {
-      if (
-        userText.includes('request change') ||
-        userText.includes('request the change') ||
-        userText.includes('reject')
-      ) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: `I have drafted the formal change request based on our discussion, targeting lines 10-20 to require parameterized queries.\n\nShall I execute the GitHub API call to submit this review?`,
-            requiresConfirmation: 'request_changes',
-          },
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: `Yes, to fix this we should use parameterized queries. You can ask me to "request these changes", and I will draft the GitHub API payload for you.`,
-          },
-        ]);
-      }
-    }, 1000);
+    const userMsg: ChatMessage = { id: Date.now(), role: 'user', content: userText };
+    setMessages((prev) => [...prev, userMsg]);
+    chatHistoryRef.current = [
+      ...chatHistoryRef.current,
+      { role: 'user', content: userText },
+    ];
+
+    setIsChatLoading(true);
+
+    try {
+      const reply = await projectService.chat(id as string, {
+        history: chatHistoryRef.current.slice(0, -1), // history before this message
+        message: userText,
+        prDiff: prDiff || undefined,
+      });
+
+      chatHistoryRef.current = [...chatHistoryRef.current, { role: 'assistant', content: reply }];
+
+      // Detect if the AI is ready to submit a review
+      const lowerReply = reply.toLowerCase();
+      const wantsRequestChanges =
+        lowerReply.includes('request changes') ||
+        lowerReply.includes('request_changes') ||
+        lowerReply.includes('shall i submit') ||
+        lowerReply.includes('should i submit');
+
+      const assistantMsg: ChatMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: reply,
+        requiresConfirmation: wantsRequestChanges ? 'request_changes' : undefined,
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role: 'system',
+          content: `⚠️ Error: ${err.message || 'Chat request failed'}`,
+        },
+      ]);
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
-  const handleConfirmAction = (_actionType: string) => {
-    const loadingId = Date.now();
+  const handleConfirmAction = async (actionType: 'request_changes' | 'approve') => {
+    const event = actionType === 'request_changes' ? 'REQUEST_CHANGES' : 'APPROVE';
+    const reviewBody = review?.summary || 'Review submitted via Cactus Review.';
+
     setMessages((prev) => [
       ...prev,
       {
-        id: loadingId,
+        id: Date.now(),
         role: 'system',
-        content: `Executing POST /repos/${repo.owner}/${repo.name}/pulls/${pr.number}/reviews...`,
+        content: `Executing POST /repos/${owner}/${repoName}/pulls/${pr.number}/reviews (event: ${event})...`,
       },
     ]);
 
-    setTimeout(() => {
+    try {
+      await githubService.submitPRReview(owner, repoName, pr.number, reviewBody, event as any);
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now() + 1,
           role: 'assistant',
-          content: `✅ Successfully submitted the "Request Changes" review to GitHub.`,
+          content: `✅ Successfully submitted "${event.replace('_', ' ')}" review to GitHub.`,
         },
       ]);
-    }, 1500);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role: 'system',
+          content: `⚠️ GitHub API error: ${err.message}`,
+        },
+      ]);
+    }
   };
+
+  const issueCount = review?.issues?.length ?? 0;
 
   return (
     <div className="flex-1 flex flex-col bg-background h-[calc(100vh-64px)] overflow-hidden relative">
@@ -191,7 +287,7 @@ export function PRReview() {
                 </span>
                 <span className="flex items-center text-sm ml-1">
                   <span className="font-semibold text-foreground mr-1">{pr.user?.login || pr.author}</span>
-                  wants to merge {MOCK_COMMITS.length} commits into
+                  wants to merge {commits.length || pr.commits || 0} commit(s) into
                   <code className="bg-muted/50 px-1.5 py-0.5 rounded text-blue-400 font-mono text-[12px] mx-1.5">
                     {pr.base?.ref || pr.baseBranch || 'main'}
                   </code>
@@ -208,18 +304,25 @@ export function PRReview() {
               variant="outline"
               className="border-border text-foreground hover:bg-muted"
               size="sm"
+              onClick={() => handleConfirmAction('request_changes')}
+              disabled={reviewStatus !== 'success'}
             >
               <X className="w-4 h-4 mr-2" />
               Request Changes
             </Button>
-            <Button className="bg-[#238636] hover:bg-[#2ea043] text-white" size="sm">
+            <Button
+              className="bg-[#238636] hover:bg-[#2ea043] text-white"
+              size="sm"
+              onClick={() => handleConfirmAction('approve')}
+              disabled={reviewStatus !== 'success'}
+            >
               <Check className="w-4 h-4 mr-2" />
-              Merge pull request
+              Approve
             </Button>
           </div>
         </div>
 
-        {/* Custom AI-First Tabs Row */}
+        {/* Tabs */}
         <div className="flex space-x-6 mt-4 w-full pl-13">
           <div
             onClick={() => setActiveTab('pr_summary')}
@@ -237,10 +340,14 @@ export function PRReview() {
               activeTab === 'ai_review' ? 'border-[#f78166] text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
             )}
           >
-            <Bot className="w-4 h-4 mr-2" /> AI Review & Suggestions
-            <span className="ml-2 bg-red-500/10 text-red-500 rounded-full px-2 py-0.5 text-xs font-semibold">
-              1 Issue
-            </span>
+            <Bot className="w-4 h-4 mr-2" />
+            AI Review & Suggestions
+            {reviewStatus === 'running' && <Loader2 className="w-3.5 h-3.5 ml-2 animate-spin text-muted-foreground" />}
+            {reviewStatus === 'success' && issueCount > 0 && (
+              <span className="ml-2 bg-red-500/10 text-red-500 rounded-full px-2 py-0.5 text-xs font-semibold">
+                {issueCount} Issue{issueCount !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
           <div
             onClick={() => setActiveTab('files')}
@@ -250,29 +357,26 @@ export function PRReview() {
             )}
           >
             <Code className="w-4 h-4 mr-2" /> Files changed
-            <span className="ml-2 bg-muted rounded-full px-2 py-0.5 text-xs font-semibold">28</span>
+            {pr.changed_files != null && (
+              <span className="ml-2 bg-muted rounded-full px-2 py-0.5 text-xs font-semibold">{pr.changed_files}</span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Split Screen Container */}
+      {/* Split Screen */}
       <ResizablePanelGroup orientation="horizontal" className="flex-1 w-full overflow-hidden">
-        {/* Left Side: Chat UI */}
+        {/* Left: Chat */}
         <ResizablePanel defaultSize={30}>
           <div className="bg-background flex flex-col z-10 shadow-lg relative h-full w-full min-w-[300px]">
             <div className="px-4 py-2 border-b border-border bg-card shrink-0 flex items-center space-x-2">
               <MessageSquareMore className="w-4 h-4 text-white/90" />
-              <span className="font-semibold text-[13px] text-foreground">
-                Interactive Review Architect
-              </span>
+              <span className="font-semibold text-[13px] text-foreground">Interactive Review Architect</span>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
-                >
+                <div key={msg.id} className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
                   <div
                     className={cn(
                       'max-w-[90%] text-sm rounded-lg p-3',
@@ -291,24 +395,52 @@ export function PRReview() {
                     )}
                     <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
 
-                    {msg.requiresConfirmation === 'request_changes' && (
+                    {msg.requiresConfirmation && (
                       <div className="mt-3 p-3 bg-background border border-border rounded-md shadow-inner">
                         <div className="text-xs text-muted-foreground font-mono mb-2 flex items-center">
                           <Code className="w-3.5 h-3.5 mr-1" />
-                          Payload Preview: REQUEST_CHANGES
+                          GitHub API: {msg.requiresConfirmation === 'request_changes' ? 'REQUEST_CHANGES' : 'APPROVE'}
                         </div>
                         <Button
-                          onClick={() => handleConfirmAction(msg.requiresConfirmation)}
+                          onClick={() => handleConfirmAction(msg.requiresConfirmation!)}
                           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                         >
                           <GitPullRequest className="w-4 h-4 mr-2" />
-                          Confirm & Call API
+                          Confirm & Call GitHub API
                         </Button>
                       </div>
                     )}
                   </div>
                 </div>
               ))}
+
+              {isChatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-card border border-border rounded-lg p-3 flex items-center gap-2 text-muted-foreground text-sm">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Thinking...</span>
+                  </div>
+                </div>
+              )}
+
+              {reviewStatus === 'running' && messages.length <= 1 && (
+                <div className="flex justify-start">
+                  <div className="bg-card border border-border rounded-lg p-3 flex items-center gap-2 text-muted-foreground text-xs font-mono">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    {reviewMessage}
+                  </div>
+                </div>
+              )}
+
+              {reviewStatus === 'error' && (
+                <div className="flex justify-start">
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 flex items-start gap-2 text-destructive text-xs">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <span>{reviewMessage}</span>
+                  </div>
+                </div>
+              )}
+
               <div ref={chatEndRef} />
             </div>
 
@@ -324,25 +456,27 @@ export function PRReview() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      if (input.trim()) handleSend();
+                      if (input.trim() && !isChatLoading) handleSend();
                       e.currentTarget.style.height = 'auto';
                     }
                   }}
                   placeholder="Ask about the architecture, request a fix..."
-                  className="w-full bg-background border border-border rounded-md py-3 pl-3 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none max-h-40 overflow-y-auto"
+                  className="w-full bg-background border border-border rounded-md py-3 pl-3 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none max-h-40 overflow-y-auto disabled:opacity-50"
                   rows={1}
+                  disabled={isChatLoading}
                 />
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={handleSend}
+                  disabled={isChatLoading || !input.trim()}
                   className="absolute right-1 text-muted-foreground hover:text-blue-400 h-8 w-8"
                 >
-                  <Send className="w-4 h-4" />
+                  {isChatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 </Button>
               </div>
               <div className="text-[10px] text-muted-foreground mt-2 text-center">
-                Context Envelope active. Answers based on local Fact Base.
+                Context Envelope active · Answers grounded in indexed project facts
               </div>
             </div>
           </div>
@@ -350,19 +484,22 @@ export function PRReview() {
 
         <ResizableHandle withHandle className="bg-border" />
 
-        {/* Right Side: Tab Content */}
+        {/* Right: Tab Content */}
         <ResizablePanel defaultSize={65}>
           <Visibility visible={activeTab === 'pr_summary'}>
-            <PRSummaryTab />
+            <PRSummaryTab pr={pr} review={review} reviewStatus={reviewStatus} reviewMessage={reviewMessage} />
           </Visibility>
           <Visibility visible={activeTab === 'ai_review'}>
-            <AIReviewTab setActiveTab={setActiveTab} />
+            <AIReviewTab
+              setActiveTab={setActiveTab}
+              issues={review?.issues || []}
+              reviewStatus={reviewStatus}
+              reviewMessage={reviewMessage}
+            />
           </Visibility>
           <Visibility visible={activeTab === 'files'}>
-            <FilesChangedTab />
+            <FilesChangedTab diff={prDiff} isLoading={isLoadingDiff} />
           </Visibility>
-
-
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

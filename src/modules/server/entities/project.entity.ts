@@ -39,6 +39,9 @@ class ProjectEntity extends BaseEntity {
   @Column({ type: 'json', nullable: true })
   analysis: Record<string, any>;
 
+  @Column({ default: 1 })
+  indexing_version: number;
+
   @Column({ type: 'text', nullable: true })
   current_task: string | null;
 

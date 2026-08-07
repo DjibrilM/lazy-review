@@ -73,7 +73,49 @@ class GithubRoutes {
         return res.status(500).json({ error: 'Failed to fetch pull requests' });
       }
     });
+
+    this.app.get('/github/repos/:owner/:repo/pulls/:pull_number/diff', async (req: Request, res: Response) => {
+      try {
+        const owner = req.params.owner as string;
+        const repo = req.params.repo as string;
+        const pull_number = parseInt(req.params.pull_number as string, 10);
+        const diff = await this.githubServices.getPRDiff({ owner, repo, pull_number });
+        return res.type('text/plain').send(diff);
+      } catch (error) {
+        console.error('Error fetching PR diff:', error);
+        return res.status(500).json({ error: 'Failed to fetch PR diff' });
+      }
+    });
+
+    this.app.get('/github/repos/:owner/:repo/pulls/:pull_number/commits', async (req: Request, res: Response) => {
+      try {
+        const owner = req.params.owner as string;
+        const repo = req.params.repo as string;
+        const pull_number = parseInt(req.params.pull_number as string, 10);
+        const data = await this.githubServices.getPRCommits({ owner, repo, pull_number });
+        return res.json(data);
+      } catch (error) {
+        console.error('Error fetching PR commits:', error);
+        return res.status(500).json({ error: 'Failed to fetch PR commits' });
+      }
+    });
+
+    this.app.post('/github/repos/:owner/:repo/pulls/:pull_number/review', async (req: Request, res: Response) => {
+      try {
+        const owner = req.params.owner as string;
+        const repo = req.params.repo as string;
+        const pull_number = parseInt(req.params.pull_number as string, 10);
+        const { body, event, comments } = req.body;
+        if (!body || !event) return res.status(400).json({ error: 'body and event are required' });
+        const data = await this.githubServices.submitPRReview({ owner, repo, pull_number, body, event, comments });
+        return res.json(data);
+      } catch (error) {
+        console.error('Error submitting PR review:', error);
+        return res.status(500).json({ error: 'Failed to submit PR review' });
+      }
+    });
   }
 }
 
 export default GithubRoutes;
+

@@ -68,6 +68,44 @@ export const githubService = {
     }
   },
 
+  async getPRDiff(owner: string, repo: string, pullNumber: number): Promise<string> {
+    try {
+      const res = await http.get(`/github/repos/${owner}/${repo}/pulls/${pullNumber}/diff`, {
+        responseType: 'text',
+      });
+      return res.data as string;
+    } catch (error) {
+      throw new Error('Failed to fetch PR diff');
+    }
+  },
+
+  async getPRCommits(owner: string, repo: string, pullNumber: number): Promise<any[]> {
+    try {
+      const res = await http.get(`/github/repos/${owner}/${repo}/pulls/${pullNumber}/commits`);
+      return res.data.data || [];
+    } catch (error) {
+      throw new Error('Failed to fetch PR commits');
+    }
+  },
+
+  async submitPRReview(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    body: string,
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT',
+  ): Promise<any> {
+    try {
+      const res = await http.post(`/github/repos/${owner}/${repo}/pulls/${pullNumber}/review`, {
+        body,
+        event,
+      });
+      return res.data;
+    } catch (error) {
+      throw new Error('Failed to submit PR review');
+    }
+  },
+
   async getRepositoryLanguages(url: string): Promise<Record<string, number> | null> {
     try {
       const res = await http.get(url);

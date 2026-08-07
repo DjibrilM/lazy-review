@@ -34,6 +34,11 @@ export class ProjectServices {
       project.updated_at = new Date();
       await project.save();
 
+      // Trigger background indexing
+      this.mainModule.aiAgent.service.analyzeAndIndexProject(project.id).catch((error) => {
+        console.error('Background indexing failed:', error);
+      });
+
       return res.json({
         message: 'Project created successfully',
         data: {
@@ -68,6 +73,54 @@ export class ProjectServices {
     } catch (error: any) {
       console.error('Failed to fetch project:', error);
       return res.status(500).json({ message: 'Failed to fetch project', error: error.message || error });
+    }
+  }
+
+  async reindexProject(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const project = await this.projectEntity.findOne({ where: { id } });
+
+      if (!project) {
+        return res.status(404).json({ message: 'Project not found' });
+      }
+
+      // Trigger background indexing
+      this.mainModule.aiAgent.service.analyzeAndIndexProject(project.id).catch((error) => {
+        console.error('Background re-indexing failed:', error);
+      });
+
+      return res.json({ message: 'Re-indexing started successfully' });
+    } catch (error: any) {
+      console.error('Failed to start re-indexing:', error);
+      return res.status(500).json({ message: 'Failed to start re-indexing', error: error.message || error });
+    }
+  }
+
+  async cancelIndexing(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const wasCancelled = this.mainModule.aiAgent.cancelIndexing(id);
+      
+      // Resilient fallback: Force reset database state just in case it is stuck in sqlite
+      const project = await ProjectEntity.findOne({ where: { id } });
+      let dbUnlocked = false;
+      if (project && project.current_task === 'indexing') {
+        project.current_task = null;
+        await project.save();
+        dbUnlocked = true;
+      }
+
+      if (!wasCancelled) {
+        if (dbUnlocked) {
+          return res.json({ message: 'Indexing state force-reset and unlocked successfully' });
+        }
+        return res.status(404).json({ message: 'No active indexing found for this project' });
+      }
+      return res.json({ message: 'Indexing cancelled successfully' });
+    } catch (error: any) {
+      console.error('Failed to cancel indexing:', error);
+      return res.status(500).json({ message: 'Failed to cancel indexing', error: error.message || error });
     }
   }
 }

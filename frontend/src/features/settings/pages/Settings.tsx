@@ -3,8 +3,9 @@ import http from '../../../lib/util/http';
 
 import { useSocketEffect } from '../../../lib/hooks/useSocketEffect';
 import { Button } from '../../../components/ui/button';
+import { Switch } from '../../../components/ui/switch';
 import ExpandableContainer from '../../../components/common/ExpandableContainer';
-import { Download, Trash2, Cpu, AlertTriangle, Box, ChevronRight } from 'lucide-react';
+import { Download, Trash2, Cpu, AlertTriangle, Box, ChevronRight, FlaskRound } from 'lucide-react';
 
 interface ModelInfo {
   id: string;
@@ -30,20 +31,35 @@ export const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [downloads, setDownloads] = useState<Record<string, DownloadProgress>>({});
   const [expandedModel, setExpandedModel] = useState<string | null>(null);
+  const [useExperimentalGpu, setUseExperimentalGpu] = useState(false);
 
-  const fetchModels = async () => {
+  const fetchSettings = async () => {
     try {
-      const res = await http.get<{ data: ModelInfo[] }>('/qvac/models');
-      setModels(res.data.data);
+      const [modelsRes, settingsRes] = await Promise.all([
+        http.get<{ data: ModelInfo[] }>('/qvac/models'),
+        http.get<{ data: { useExperimentalGpu: boolean } }>('/settings')
+      ]);
+      setModels(modelsRes.data.data);
+      setUseExperimentalGpu(settingsRes.data.data.useExperimentalGpu);
     } catch (err) {
-      console.error('Failed to fetch models:', err);
+      console.error('Failed to fetch settings/models:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  const toggleGpuSetting = async (checked: boolean) => {
+    try {
+      setUseExperimentalGpu(checked); // Optimistic update
+      await http.put('/settings', { useExperimentalGpu: checked });
+    } catch (err) {
+      console.error('Failed to update GPU setting', err);
+      setUseExperimentalGpu(!checked); // Revert on failure
+    }
+  };
+
   useEffect(() => {
-    fetchModels();
+    fetchSettings();
   }, []);
 
   useSocketEffect({
@@ -54,7 +70,7 @@ export const Settings = () => {
       }));
 
       if (data.status === 'success' || data.status === 'error') {
-        fetchModels();
+        fetchSettings();
       }
     },
   });
@@ -85,7 +101,7 @@ export const Settings = () => {
     if (!window.confirm('Are you sure you want to delete this model to free up space?')) return;
     try {
       await http.delete(`/qvac/models/${modelId}`);
-      fetchModels();
+      fetchSettings();
     } catch (err) {
       console.error('Failed to delete model:', err);
       alert('Failed to delete model');
@@ -106,13 +122,40 @@ export const Settings = () => {
   return (
     <div className="min-h-screen bg-[#f2f2f7] dark:bg-black p-4 md:p-8 animate-in fade-in duration-300">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold tracking-tight mb-6 px-2">Settings</h1>
+        <h1 className="text-3xl font-bold tracking-tight mb-6 px-2 text-foreground">Settings</h1>
+
+        <div className="mb-2 px-4 text-[13px] font-normal text-muted-foreground uppercase tracking-wide">
+          Hardware Drivers
+        </div>
+        <div className="bg-white dark:bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm border dark:border-white/5 mb-8">
+          <div className="flex flex-col p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-md text-white shadow-sm shrink-0 bg-orange-500">
+                  <FlaskRound className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[17px] font-normal tracking-tight text-foreground">
+                    Enable Experimental GPU Inference
+                  </span>
+                </div>
+              </div>
+              <Switch
+                checked={useExperimentalGpu}
+                onCheckedChange={toggleGpuSetting}
+              />
+            </div>
+            <p className="text-[13px] text-muted-foreground mt-2 px-1">
+              By default, AI models run on your CPU which is highly stable but slower. Enabling GPU acceleration is experimental and may cause the AI agent to hang indefinitely on certain hardware (like some Intel Macs with AMD GPUs).
+            </p>
+          </div>
+        </div>
 
         <div className="mb-2 px-4 text-[13px] font-normal text-muted-foreground uppercase tracking-wide">
           Local AI Models
         </div>
 
-        <div className="bg-white dark:bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm border border-black/5 dark:border-white/5">
+        <div className="bg-white dark:bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm border dark:border-white/5">
           {models.map((model, index) => {
             const download = downloads[model.id];
             const isDownloading =
@@ -128,7 +171,7 @@ export const Settings = () => {
                 >
                   <div className="flex items-center gap-3.5">
                     <div
-                      className={`p-1.5 rounded-md text-white shadow-sm flex-shrink-0 ${model.id.toUpperCase().includes('QWEN') ? 'bg-blue-500' : 'bg-indigo-500'}`}
+                      className={`p-1.5 rounded-md text-white shadow-sm shrink-0 ${model.id.toUpperCase().includes('QWEN') ? 'bg-blue-500' : 'bg-indigo-500'}`}
                     >
                       <Box className="w-5 h-5" />
                     </div>
@@ -161,16 +204,16 @@ export const Settings = () => {
                       </div>
                     )}
                     <ChevronRight
-                      className={`w-5 h-5 text-[#c7c7cc] dark:text-[#5c5c5e] transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                      className={`w-5 h-5 dark:text-[#5c5c5e] transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                     />
                   </div>
                 </div>
 
                 <ExpandableContainer isExpanded={isExpanded}>
-                  <div className="bg-black/5 dark:bg-black/40 px-4 py-4 pl-[3.25rem] border-t border-black/5 dark:border-white/5 space-y-4">
+                  <div className="dark:bg-black/40 px-4 py-4 pl-13 border-t dark:border-white/5 space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-foreground">Model Identifier</span>
-                      <span className="text-sm font-mono text-muted-foreground bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded">
+                      <span className="text-sm font-mono text-muted-foreground dark:bg-white/10 px-2 py-0.5 rounded">
                         {model.id}
                       </span>
                     </div>

@@ -17,7 +17,6 @@ class GithubModule {
 
   constructor(mainModule?: MainModule) {
     if (mainModule) this.mainModule = mainModule;
-    console.log(process.env.GITHUB_TOKEN, 'repository');
     this.octokit = new Octokit({
       auth: process.env.GITHUB_TOKEN,
     });
@@ -287,6 +286,61 @@ class GithubModule {
     return { data };
   }
 
+  async getPRDiff({ owner, repo, pull_number }: { owner: string; repo: string; pull_number: number }): Promise<string> {
+    const response = await this.octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number,
+      mediaType: { format: 'diff' },
+    });
+    // Octokit returns the raw diff as a string when format: 'diff' is requested
+    return (response.data as unknown as string) || '';
+  }
+
+  async getPRCommits({ owner, repo, pull_number }: { owner: string; repo: string; pull_number: number }) {
+    const { data } = await this.octokit.rest.pulls.listCommits({
+      owner,
+      repo,
+      pull_number,
+      per_page: 50,
+    });
+    return {
+      data: data.map((c) => ({
+        sha: c.sha.substring(0, 7),
+        message: c.commit.message.split('\n')[0], // first line only
+        author: c.commit.author?.name || c.commit.author?.email || 'unknown',
+        date: c.commit.author?.date || '',
+      })),
+    };
+  }
+
+  async submitPRReview({
+    owner,
+    repo,
+    pull_number,
+    body,
+    event,
+    comments,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+    body: string;
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+    comments?: { path: string; position: number; body: string }[];
+  }) {
+    const { data } = await this.octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number,
+      body,
+      event,
+      comments: comments || [],
+    });
+    return { data };
+  }
+
 }
 
 export default GithubModule;
+

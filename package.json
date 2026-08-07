@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/chalk-animation": "^1.6.3",
     "@types/express": "^5.0.3",
     "@types/node": "^24.6.2",

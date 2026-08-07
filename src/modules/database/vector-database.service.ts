@@ -61,9 +61,9 @@ export class VectorDatabaseService {
         VALUES (?, ?)
       `);
       
-      insertVec.run(factId, serializedEmbedding);
+      insertVec.run(BigInt(factId), serializedEmbedding);
 
-      return factId;
+      return Number(factId);
     });
 
     return transaction();
