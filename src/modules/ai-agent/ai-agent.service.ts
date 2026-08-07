@@ -50,12 +50,12 @@ export function chunkText(text: string, maxChunkSize = 1000): string[] {
 export function extractJson(text: string): any {
   // 1. Try to extract from a markdown code block first
   const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  let jsonString = codeBlockMatch ? (codeBlockMatch[1] || text) : text;
+  let jsonString = codeBlockMatch ? codeBlockMatch[1] || text : text;
 
   // 2. Find the first '{' and the last '}'
   const start = jsonString.indexOf('{');
   const end = jsonString.lastIndexOf('}');
-  
+
   if (start === -1 || end === -1 || start > end) {
     throw new Error('No JSON object found in response.');
   }
@@ -174,7 +174,7 @@ export class AiAgentService {
               }
             }
             process.stdout.write('\n');
-          } catch (e) {
+          } catch {
             // gracefully ignore stream interrupts
           }
         })();
@@ -229,7 +229,7 @@ export class AiAgentService {
 
       // Fetch settings to determine device
       const settingsRepo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
-      let settings = await settingsRepo.findOneBy({ id: 1 });
+      const settings = await settingsRepo.findOneBy({ id: 1 });
       const deviceConfig = settings?.useExperimentalGpu ? undefined : 'cpu';
 
       if (qvacQwen) {
@@ -380,7 +380,7 @@ export class AiAgentService {
             version: project.indexing_version,
           });
         }
-      } catch (e) {
+      } catch {
         /* no README */
       }
 
@@ -421,7 +421,7 @@ export class AiAgentService {
               version: project.indexing_version,
             });
           }
-        } catch (e) {
+        } catch {
           /* file doesn't exist */
         }
       }
@@ -561,7 +561,7 @@ Your research workflow:
             extractJson(manifestResult.contentText);
             manifestResultContent = manifestResult.contentText;
             isDone = true;
-          } catch (err) {
+          } catch {
             // The text was not valid JSON. Force a final JSON-only call to extract it.
             progress('⚠️ Output was not valid JSON, asking model to reformat...');
             history.push({
@@ -588,7 +588,7 @@ Your research workflow:
             try {
               extractJson(manifestResultContent);
               isDone = true;
-            } catch (e) {
+            } catch {
               progress('⚠️ Manifest output was not valid JSON, retrying...');
             }
           }
@@ -629,7 +629,7 @@ Your research workflow:
         extractedFacts.application_type = extractedFacts.application_type || 'Unknown';
         extractedFacts.required_secrets = extractedFacts.required_secrets || [];
         extractedFacts.explanation = extractedFacts.explanation || '';
-      } catch (e) {
+      } catch {
         extractedFacts = {
           project_name: project.name,
           architecture_pattern: 'Unknown (LLM Parse Error)',

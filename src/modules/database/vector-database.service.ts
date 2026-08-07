@@ -1,5 +1,4 @@
 import Database from 'better-sqlite3';
-// @ts-ignore
 import * as sqliteVec from 'sqlite-vec';
 export class VectorDatabaseService {
   private db: Database.Database;
@@ -36,7 +35,7 @@ export class VectorDatabaseService {
     content: string,
     embeddingArray: number[],
     filePath?: string,
-    metadata?: any
+    metadata?: any,
   ) {
     const embeddingFloat32 = new Float32Array(embeddingArray);
     const serializedEmbedding = Buffer.from(embeddingFloat32.buffer);
@@ -46,21 +45,21 @@ export class VectorDatabaseService {
         INSERT INTO project_facts (project_id, content, file_path, metadata, created_at, updated_at)
         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `);
-      
+
       const result = insertFact.run(
         projectId,
         content,
         filePath || null,
-        metadata ? JSON.stringify(metadata) : null
+        metadata ? JSON.stringify(metadata) : null,
       );
-      
+
       const factId = result.lastInsertRowid;
 
       const insertVec = this.db.prepare(`
         INSERT INTO vec_project_facts (fact_id, embedding)
         VALUES (?, ?)
       `);
-      
+
       insertVec.run(BigInt(factId), serializedEmbedding);
 
       return Number(factId);
@@ -93,7 +92,7 @@ export class VectorDatabaseService {
     const results = searchStmt.all(serializedQuery, projectId, limit);
     return results.map((row: any) => ({
       ...row,
-      metadata: row.metadata ? JSON.parse(row.metadata) : null
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
     }));
   }
 
@@ -138,11 +137,11 @@ export class VectorDatabaseService {
   public async replaceFactsForFile(
     projectId: string,
     filePath: string,
-    facts: { content: string; embedding: number[]; metadata?: any }[]
+    facts: { content: string; embedding: number[]; metadata?: any }[],
   ) {
     // Delete existing
     this.deleteFactsForFile(projectId, filePath);
-    
+
     // Insert new
     for (const fact of facts) {
       await this.saveProjectFact(projectId, fact.content, fact.embedding, filePath, fact.metadata);

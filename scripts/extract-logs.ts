@@ -11,7 +11,7 @@ process.env.QVAC_LOG_LEVEL = 'debug';
 async function main() {
   console.log('--- STARTING QVAC PROVIDER (ENV INJECTED) ---');
   await startQVACProvider();
-  
+
   const obj = (qvacModels as any)[QWEN_MODEL_ID];
   let loadedId = '';
   try {
@@ -21,8 +21,12 @@ async function main() {
     });
   } catch (e: any) {}
 
-  const run = completion({ modelId: loadedId, history: [{ role: 'user', content: 'Say hello' }], stream: false });
-  await new Promise(r => setTimeout(r, 10000));
+  const run = completion({
+    modelId: loadedId,
+    history: [{ role: 'user', content: 'Say hello' }],
+    stream: false,
+  });
+  await new Promise((r) => setTimeout(r, 10000));
   await stopQVACProvider();
   process.exit(0);
 }

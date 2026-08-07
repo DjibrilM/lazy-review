@@ -51,7 +51,8 @@ export class Server {
 
       this.httpServer = this.app.listen(this.port, () => {
         console.log(
-          chalk.green(`[LAZY-REVIEW] Express server listening at `) + chalk.bold.blue(`http://localhost:${this.port}`)
+          chalk.green(`[LAZY-REVIEW] Express server listening at `) +
+            chalk.bold.blue(`http://localhost:${this.port}`),
         );
       });
 

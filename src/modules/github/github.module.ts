@@ -68,7 +68,7 @@ class GithubModule {
     }
 
     const token = process.env.GITHUB_TOKEN || '';
-    
+
     const gitWithProgress = simpleGit({
       progress: ({ method, stage, progress, processed, total }) => {
         if (this.mainModule) {
@@ -239,7 +239,7 @@ class GithubModule {
           .update(Buffer.concat([ephemeralKeyPair.publicKey, publicKeyBytes]))
           .digest();
         nonce = new Uint8Array(hash.slice(0, 24));
-      } catch (e) {
+      } catch {
         const hash = crypto
           .createHash('sha256')
           .update(Buffer.concat([ephemeralKeyPair.publicKey, publicKeyBytes]))
@@ -286,7 +286,15 @@ class GithubModule {
     return { data };
   }
 
-  async getPRDiff({ owner, repo, pull_number }: { owner: string; repo: string; pull_number: number }): Promise<string> {
+  async getPRDiff({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }): Promise<string> {
     const response = await this.octokit.rest.pulls.get({
       owner,
       repo,
@@ -297,7 +305,15 @@ class GithubModule {
     return (response.data as unknown as string) || '';
   }
 
-  async getPRCommits({ owner, repo, pull_number }: { owner: string; repo: string; pull_number: number }) {
+  async getPRCommits({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }) {
     const { data } = await this.octokit.rest.pulls.listCommits({
       owner,
       repo,
@@ -339,8 +355,6 @@ class GithubModule {
     });
     return { data };
   }
-
 }
 
 export default GithubModule;
-

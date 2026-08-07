@@ -53,7 +53,7 @@ export const useSocketEffect = ({
     if (onReviewProgress) {
       reviewProgressListeners.set(listenerId.current, onReviewProgress);
     }
-    
+
     if (onConnect) {
       socketConnectListeners.set(listenerId.current, onConnect);
       if (activeSocket?.connected) {
@@ -74,6 +74,13 @@ export const useSocketEffect = ({
       socketConnectListeners.delete(listenerId.current);
       socketDisconnectListeners.delete(listenerId.current);
     };
-  }, [onProjectCreationLog, onProjectCreationSuccess, onModelProgress, onIndexingProgress, onReviewProgress, onConnect, onDisconnect]);
+  }, [
+    onProjectCreationLog,
+    onProjectCreationSuccess,
+    onModelProgress,
+    onIndexingProgress,
+    onReviewProgress,
+    onConnect,
+    onDisconnect,
+  ]);
 };
-

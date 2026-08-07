@@ -46,10 +46,7 @@ export const projectService = {
     }
   },
 
-  async generateReview(
-    id: string,
-    payload: { prDiff: string; prTitle: string; prBody: string },
-  ) {
+  async generateReview(id: string, payload: { prDiff: string; prTitle: string; prBody: string }) {
     try {
       const res = await http.post(`/projects/${id}/review`, payload);
       return res.data.data;
@@ -70,4 +67,3 @@ export const projectService = {
     }
   },
 };
-

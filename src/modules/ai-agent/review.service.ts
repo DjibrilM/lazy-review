@@ -1,4 +1,4 @@
-import { completion, embed, loadModel, getModelInfo } from '@qvac/sdk';
+import { completion, embed, loadModel } from '@qvac/sdk';
 import * as qvacModels from '@qvac/sdk';
 import type { MainModule } from '../main.module.js';
 import { QWEN_MODEL_ID, GTE_MODEL_ID } from '../../constants.js';

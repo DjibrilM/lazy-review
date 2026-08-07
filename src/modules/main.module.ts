@@ -31,7 +31,7 @@ export class MainModule {
 
     await this.database.connect();
     this.server.port = port ?? 16500;
-    
+
     console.log(chalk.cyan('Initializing API and services...'));
     await this.server.start();
 
@@ -40,6 +40,10 @@ export class MainModule {
       console.log(chalk.cyan('Socket Gateway initialized ✅'));
     }
 
-    console.log(chalk.green.bold(`\n✨ Boot-up complete! QVAC Server is running on port ${this.server.port}\n`));
+    console.log(
+      chalk.green.bold(
+        `\n✨ Boot-up complete! QVAC Server is running on port ${this.server.port}\n`,
+      ),
+    );
   }
 }

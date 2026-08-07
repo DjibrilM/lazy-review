@@ -41,11 +41,16 @@ export function createFsTools(projectRootPath: string) {
     },
     {
       name: 'read_file',
-      description: 'Read the contents of a specific file in the repository. Input should be a relative path from the project root.',
+      description:
+        'Read the contents of a specific file in the repository. Input should be a relative path from the project root.',
       schema: z.object({
-        filePath: z.string().describe('The relative path of the file to read (e.g., "package.json" or "src/index.ts")'),
+        filePath: z
+          .string()
+          .describe(
+            'The relative path of the file to read (e.g., "package.json" or "src/index.ts")',
+          ),
       }),
-    }
+    },
   );
 
   const readDirectoryTool = tool(
@@ -68,11 +73,16 @@ export function createFsTools(projectRootPath: string) {
     },
     {
       name: 'read_directory',
-      description: 'List the immediate contents of a directory in the repository. Input should be a relative path from the project root.',
+      description:
+        'List the immediate contents of a directory in the repository. Input should be a relative path from the project root.',
       schema: z.object({
-        dirPath: z.string().describe('The relative path of the directory to list (e.g., "." for project root, or "src")'),
+        dirPath: z
+          .string()
+          .describe(
+            'The relative path of the directory to list (e.g., "." for project root, or "src")',
+          ),
       }),
-    }
+    },
   );
 
   const getDirectoryTreeTool = tool(
@@ -87,14 +97,23 @@ export function createFsTools(projectRootPath: string) {
           const indent = '  '.repeat(currentDepth);
 
           const ignoredDirs = [
-            'node_modules', '.git', 'dist', '.pnpm', 'build', '.next', '.cache',
-            'pnpm-lock.yaml', 'package-lock.json', '.DS_Store',
+            'node_modules',
+            '.git',
+            'dist',
+            '.pnpm',
+            'build',
+            '.next',
+            '.cache',
+            'pnpm-lock.yaml',
+            'package-lock.json',
+            '.DS_Store',
           ];
 
           for (const entry of entries) {
             if (ignoredDirs.includes(entry.name)) continue;
 
-            const relativeEntryPath = currentPath === '.' ? entry.name : path.join(currentPath, entry.name);
+            const relativeEntryPath =
+              currentPath === '.' ? entry.name : path.join(currentPath, entry.name);
             if (entry.isDirectory()) {
               result += `${indent}📁 ${entry.name}/\n`;
               const subTree = await buildTree(relativeEntryPath, currentDepth + 1);
@@ -114,11 +133,15 @@ export function createFsTools(projectRootPath: string) {
     },
     {
       name: 'get_directory_tree',
-      description: 'Get a visual recursive tree representation of the project folder structure up to a specified depth (default 3), ignoring node_modules, .git, dist, etc.',
+      description:
+        'Get a visual recursive tree representation of the project folder structure up to a specified depth (default 3), ignoring node_modules, .git, dist, etc.',
       schema: z.object({
-        maxDepth: z.number().optional().describe('Maximum depth of recursion (default is 3, maximum allowed is 5)'),
+        maxDepth: z
+          .number()
+          .optional()
+          .describe('Maximum depth of recursion (default is 3, maximum allowed is 5)'),
       }),
-    }
+    },
   );
 
   return [readFileTool, readDirectoryTool, getDirectoryTreeTool];

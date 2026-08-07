@@ -112,7 +112,6 @@ async function tryDevice(device: string, gpuLayers = -1): Promise<ProbeResult> {
     { role: 'user', content: 'Say only the single word "hello".' },
   ];
 
-
   const tInfer = performance.now();
   const run = completion({ modelId: loadedId, history, stream: false });
   $.info(`requestId: ${run.requestId}`);

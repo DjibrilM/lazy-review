@@ -20,7 +20,7 @@ class Routes {
     this.projectRouts = new ProjectRouts(this.app, this.mainModule);
     this.githubRoutes = new GithubRoutes(this.app, this.mainModule);
     this.qvacRoutes = new QvacRoutes(this.app, this.mainModule);
-    
+
     const settingsService = new SettingsService(this.mainModule.database.appDataSource);
     this.settingsController = new SettingsController(settingsService);
   }
@@ -29,7 +29,7 @@ class Routes {
     this.projectRouts.init();
     this.githubRoutes.init();
     this.qvacRoutes.init();
-    
+
     this.app.use('/settings', this.settingsController.router);
   }
 }

@@ -33,11 +33,19 @@ export class QvacModule {
         let expectedSize = 0;
         let actualSize = 0;
         let isLoaded = false;
-        
+
         const qvacModelObject = (qvacModels as any)[model.id];
         if (!qvacModelObject) {
           console.warn(`Model object not found in SDK for ID: ${model.id}`);
-          return { ...model, isCompatible: false, totalMemGb: 0, isCached, expectedSize, actualSize, isLoaded };
+          return {
+            ...model,
+            isCompatible: false,
+            totalMemGb: 0,
+            isCached,
+            expectedSize,
+            actualSize,
+            isLoaded,
+          };
         }
 
         try {
@@ -81,7 +89,7 @@ export class QvacModule {
 
       const qvacModelObject = (qvacModels as any)[modelId];
       if (!qvacModelObject) {
-         throw new Error(`Model ${modelId} not found in qvac SDK exports`);
+        throw new Error(`Model ${modelId} not found in qvac SDK exports`);
       }
 
       await downloadAsset({
@@ -129,7 +137,7 @@ export class QvacModule {
     try {
       const qvacModelObject = (qvacModels as any)[modelId];
       if (!qvacModelObject) {
-         throw new Error(`Model ${modelId} not found in qvac SDK exports`);
+        throw new Error(`Model ${modelId} not found in qvac SDK exports`);
       }
 
       const info = await getModelInfo(qvacModelObject);

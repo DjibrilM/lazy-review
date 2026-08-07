@@ -26,12 +26,9 @@ export function createGitTools(projectRootPath: string) {
   const getCommitsTool = {
     name: 'get_recent_commits',
     description:
-      'Retrieve the most recent git commit history to understand the project\'s development trajectory and purpose.',
+      "Retrieve the most recent git commit history to understand the project's development trajectory and purpose.",
     parameters: z.object({
-      limit: z
-        .number()
-        .optional()
-        .describe('Maximum number of commits to retrieve (default: 15)'),
+      limit: z.number().optional().describe('Maximum number of commits to retrieve (default: 15)'),
     }),
     handler: async (args: { limit?: number }) => {
       try {
@@ -106,7 +103,15 @@ export function createGitTools(projectRootPath: string) {
     }),
     handler: async (args: { keyword: string; file_extension?: string }) => {
       const results: { file: string; line: number; content: string }[] = [];
-      const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.cache', 'coverage']);
+      const ignoredDirs = new Set([
+        'node_modules',
+        '.git',
+        'dist',
+        'build',
+        '.next',
+        '.cache',
+        'coverage',
+      ]);
 
       const walkDir = async (dir: string) => {
         if (results.length >= 20) return; // cap results
@@ -129,7 +134,10 @@ export function createGitTools(projectRootPath: string) {
               const content = await fs.readFile(fullPath, 'utf-8');
               const lines = content.split('\n');
               lines.forEach((line, idx) => {
-                if (results.length < 20 && line.toLowerCase().includes(args.keyword.toLowerCase())) {
+                if (
+                  results.length < 20 &&
+                  line.toLowerCase().includes(args.keyword.toLowerCase())
+                ) {
                   results.push({
                     file: path.relative(absoluteRoot, fullPath),
                     line: idx + 1,
