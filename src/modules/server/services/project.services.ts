@@ -1,7 +1,6 @@
 import { MainModule } from '../../main.module.js';
 import { type Request, type Response } from 'express';
 import ProjectEntity from '../entities/project.entity.js';
-
 export class ProjectServices {
   mainModule: MainModule;
   readonly projectEntity = ProjectEntity;
@@ -131,6 +130,148 @@ export class ProjectServices {
       return res
         .status(500)
         .json({ message: 'Failed to cancel indexing', error: error.message || error });
+    }
+  }
+
+  async loadModels(req: Request, res: Response) {
+    try {
+      await this.mainModule.aiAgent.prReviewAgent.loadModels();
+      return res.status(200).json({ message: 'Model loaded successfully' });
+    } catch (err: any) {
+      console.error('Failed to load models:', err);
+      return res.status(500).json({ error: 'Failed to load models' });
+    }
+  }
+
+  async unloadModels(req: Request, res: Response) {
+    try {
+      await this.mainModule.aiAgent.prReviewAgent.unloadModels();
+      return res.json({ message: 'Models unloaded successfully' });
+    } catch (error: any) {
+      console.error('Failed to unload models:', error);
+      return res.status(500).json({ error: error.message || 'Failed to unload models' });
+    }
+  }
+
+  async getReview(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const pull_number = req.params.pull_number as string;
+      const project = await ProjectEntity.findOne({ where: { id } });
+      if (!project) return res.status(404).json({ message: 'Project not found' });
+
+      const prReviews = project.pr_reviews || {};
+      const reviewState = prReviews[pull_number] || { status: 'idle' };
+
+      return res.json({ data: reviewState });
+    } catch (error: any) {
+      console.error('Failed to fetch review:', error);
+      return res.status(500).json({ error: error.message || 'Failed to fetch review' });
+    }
+  }
+
+  async deleteReview(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const pull_number = req.params.pull_number as string;
+      const project = await ProjectEntity.findOne({ where: { id } });
+      if (!project) return res.status(404).json({ message: 'Project not found' });
+
+      const prReviews = project.pr_reviews || {};
+      if (prReviews[pull_number]) {
+        delete prReviews[pull_number];
+        project.pr_reviews = prReviews;
+        await project.save();
+      }
+
+      return res.json({ message: 'Review session deleted successfully' });
+    } catch (error: any) {
+      console.error('Failed to delete review session:', error);
+      return res.status(500).json({ error: error.message || 'Failed to delete review session' });
+    }
+  }
+
+  async generateReview(req: Request, res: Response) {
+    try {
+      const projectId = req.params.id as string;
+      const { prDiff, prTitle, prBody, prNumber } = req.body;
+
+      if (!prDiff) return res.status(400).json({ error: 'prDiff is required' });
+      if (!prNumber) return res.status(400).json({ error: 'prNumber is required' });
+
+      const project = await ProjectEntity.findOne({ where: { id: projectId } });
+      if (!project) return res.status(404).json({ message: 'Project not found' });
+
+      // Initialize state to running
+      const prReviews = project.pr_reviews || {};
+      prReviews[prNumber] = { status: 'running' };
+      project.pr_reviews = prReviews;
+      await project.save();
+
+      console.log('PR Review Details : ', { projectId, prTitle, prBody, prNumber });
+
+      // Fire off in background
+      this.mainModule.aiAgent.prReviewAgent
+        .generatePRReview(projectId, prDiff, prTitle || 'Untitled PR', prBody || '')
+        .then(async (review) => {
+          // Re-fetch project to avoid race conditions with other updates
+          const p = await ProjectEntity.findOne({ where: { id: projectId } });
+          if (p) {
+            const currentReviews = p.pr_reviews || {};
+            currentReviews[prNumber] = { status: 'success', review };
+            p.pr_reviews = currentReviews;
+            await p.save();
+          }
+          if (this.mainModule.socket) {
+            this.mainModule.socket.emitReviewProgress({
+              projectId,
+              status: 'success',
+              review,
+            });
+          }
+        })
+        .catch(async (err: any) => {
+          console.error('Review generation failed:', err);
+          const p = await ProjectEntity.findOne({ where: { id: projectId } });
+          if (p) {
+            const currentReviews = p.pr_reviews || {};
+            currentReviews[prNumber] = { status: 'error', message: err.message };
+            p.pr_reviews = currentReviews;
+            await p.save();
+          }
+          if (this.mainModule.socket) {
+            this.mainModule.socket.emitReviewProgress({
+              projectId,
+              status: 'error',
+              message: err.message,
+            });
+          }
+        });
+
+      return res.status(202).json({ message: 'Review generation started' });
+    } catch (error: any) {
+      console.error('Failed to start review:', error);
+      return res.status(500).json({ error: error.message || 'Failed to start review' });
+    }
+  }
+  async deleteProject(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      if (!id) return res.status(400).json({ error: 'Project ID is required' });
+
+      const project = await ProjectEntity.findOne({ where: { id } });
+      if (!project) return res.status(404).json({ message: 'Project not found' });
+
+      // Delete vector facts
+      this.mainModule.database.vectorDatabase.deleteProjectFacts(id);
+
+      // Finally delete the project itself
+      await ProjectEntity.delete({ id });
+
+      return res.status(200).json({ message: 'Project successfully deleted' });
+    } catch (error: any) {
+      console.error('Failed to delete project:', error);
+      return res.status(500).json({ error: error.message || 'Failed to delete project' });
     }
   }
 }

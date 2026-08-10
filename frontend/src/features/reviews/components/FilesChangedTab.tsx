@@ -1,6 +1,6 @@
 import { FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/util/shared';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface DiffLine {
   type: 'header' | 'file' | 'added' | 'removed' | 'unchanged' | 'hunk';
@@ -67,14 +67,27 @@ function parseDiff(diff: string): FilePatch[] {
 interface FilesChangedTabProps {
   diff: string;
   isLoading?: boolean;
+  selectedFileForDiff?: string | null;
 }
 
-export function FilesChangedTab({ diff, isLoading }: FilesChangedTabProps) {
+export function FilesChangedTab({ diff, isLoading, selectedFileForDiff }: FilesChangedTabProps) {
   const patches = useMemo(() => parseDiff(diff || ''), [diff]);
   const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>(() => {
     // First file expanded by default
     return {};
   });
+
+  useEffect(() => {
+    if (selectedFileForDiff) {
+      setExpandedFiles((prev) => ({ ...prev, [selectedFileForDiff]: true }));
+      setTimeout(() => {
+        const el = document.getElementById(`diff-file-${selectedFileForDiff}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [selectedFileForDiff]);
 
   if (isLoading) {
     return (
@@ -107,7 +120,7 @@ export function FilesChangedTab({ diff, isLoading }: FilesChangedTabProps) {
         {patches.map((patch, fi) => {
           const isExpanded = expandedFiles[patch.fileName] !== false; // expanded by default
           return (
-            <div key={fi} className="border border-border rounded-md overflow-hidden shadow-sm">
+            <div key={fi} id={`diff-file-${patch.fileName}`} className="border border-border rounded-md overflow-hidden shadow-sm">
               {/* File header */}
               <button
                 className="w-full bg-card border-b border-border px-4 py-2 text-sm flex items-center justify-between hover:bg-muted/40 transition-colors"

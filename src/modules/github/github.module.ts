@@ -343,7 +343,7 @@ class GithubModule {
     pull_number: number;
     body: string;
     event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
-    comments?: { path: string; position: number; body: string }[];
+    comments?: { path: string; position?: number; line?: number; body: string }[];
   }) {
     const { data } = await this.octokit.rest.pulls.createReview({
       owner,

@@ -3,11 +3,15 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 
+import { FileCode2 } from 'lucide-react';
+
 interface MarkdownRendererProps {
   content: string;
+  changedFiles?: string[];
+  onFileClick?: (fileName: string) => void;
 }
 
-export const MarkdownRenderer = ({ content }: MarkdownRendererProps) => {
+export const MarkdownRenderer = ({ content, changedFiles = [], onFileClick }: MarkdownRendererProps) => {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -75,6 +79,31 @@ export const MarkdownRenderer = ({ content }: MarkdownRendererProps) => {
           const isBlock = className?.includes('language-') || String(children).includes('\n');
 
           if (!isBlock) {
+            const fileName = String(children).trim();
+            const isChangedFile = changedFiles.includes(fileName);
+
+            if (isChangedFile && onFileClick) {
+              return (
+                <button
+                  onClick={() => onFileClick(fileName)}
+                  className="
+                    inline-flex items-center gap-1.5
+                    rounded-md
+                    border border-primary/30
+                    bg-primary/10 hover:bg-primary/20
+                    px-2 py-0.5
+                    text-[0.9em] font-medium text-primary
+                    transition-colors
+                    align-middle
+                  "
+                  title="View this file in the diff"
+                >
+                  <FileCode2 className="w-3.5 h-3.5" />
+                  <span className="font-mono">{children}</span>
+                </button>
+              );
+            }
+
             return (
               <code
                 className="

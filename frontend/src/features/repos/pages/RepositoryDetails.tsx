@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { BookOpen, GitPullRequest, FileText, Loader2, RefreshCw, AlertTriangle, X } from 'lucide-react';
+import { BookOpen, GitPullRequest, FileText, Loader2, RefreshCw, AlertTriangle, X, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -8,6 +8,15 @@ import { PRList } from '../components/PRList';
 import { CodebaseSummary } from '../components/CodebaseSummary';
 import { AIReviewSessionDialog } from '../components/AIReviewSessionDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { projectService } from '@/services/project.service';
 import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
 
@@ -17,9 +26,11 @@ export function RepositoryDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [prToOpen, setPrToOpen] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
   const [indexingError, setIndexingError] = useState<string | null>(null);
   const [indexingLog, setIndexingLog] = useState<string[]>([]);
+  const [indexingThinking, setIndexingThinking] = useState<string>('');
   const [indexingDuration, setIndexingDuration] = useState(0);
 
   const { data: repo, isLoading } = useQuery({
@@ -36,17 +47,24 @@ export function RepositoryDetails() {
         setIsReindexing(true);
         setIndexingError(null);
         if (data.message) {
-          setIndexingLog(prev => [...prev, data.message]);
+          if (data.isStreamChunk) {
+            setIndexingThinking(prev => prev + data.message);
+          } else {
+            setIndexingLog(prev => [...prev, data.message]);
+            setIndexingThinking('');
+          }
         }
       } else if (data.status === 'success') {
         setIsReindexing(false);
         setIndexingError(null);
         setIndexingLog([]);
+        setIndexingThinking('');
         queryClient.invalidateQueries({ queryKey: ['local-project', id] });
       } else if (data.status === 'error') {
         setIsReindexing(false);
         setIndexingError(data.message || 'An unknown error occurred during indexing.');
         setIndexingLog([]);
+        setIndexingThinking('');
         queryClient.invalidateQueries({ queryKey: ['local-project', id] });
       }
     }
@@ -77,8 +95,17 @@ export function RepositoryDetails() {
   if (isLoading) return <div className="p-8 text-muted-foreground flex items-center justify-center"><Loader2 className="animate-spin mr-2" /> Loading repository...</div>;
   if (!repo) return <div className="p-8 text-muted-foreground">Repository not found</div>;
 
-  const handleSelectPR = (pr: any) => {
-    navigate(`/repo/${repo.id}/review/${pr.number}`);
+  const handleSelectPR = async (pr: any, startFresh?: boolean) => {
+    if (startFresh && repo) {
+      try {
+        await projectService.deleteReview(repo.id, pr.number);
+        navigate(`/repo/${repo.id}/review/${pr.number}`);
+      } catch (error: any) {
+        toast.error('Failed to reset review state');
+        return;
+      }
+    }
+
   };
 
   const handleReindex = async () => {
@@ -106,7 +133,19 @@ export function RepositoryDetails() {
       toast.error(error.message || 'Failed to cancel indexing');
     }
   };
-
+  const handleDeleteProject = async () => {
+    if (!repo) return;
+    try {
+      setIsDeleting(true);
+      await projectService.deleteProject(repo.id);
+      toast.success('Project deleted successfully');
+      queryClient.invalidateQueries({ queryKey: ['local-projects'] });
+      navigate('/');
+    } catch (error: any) {
+      setIsDeleting(false);
+      toast.error(error.message || 'Failed to delete project');
+    }
+  };
   return (
     <div className="flex-1 flex flex-col h-full bg-background relative">
       {/* Repo Header */}
@@ -125,6 +164,31 @@ export function RepositoryDetails() {
               Local Clone
             </span>
             <div className="flex-1" />
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="gap-2 text-xs mr-2" disabled={isDeleting}>
+                  {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  {isDeleting ? 'Deleting...' : 'Delete Project'}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete Project</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to delete this project? This action cannot be undone. All AI analysis, vector data, and PR reviews will be permanently removed.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">Cancel</Button>
+                  </DialogTrigger>
+                  <Button variant="destructive" onClick={handleDeleteProject} disabled={isDeleting}>
+                    {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Delete
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Button
               variant="outline"
               size="sm"
@@ -161,9 +225,8 @@ export function RepositoryDetails() {
               <div className="p-3 max-h-40 overflow-y-auto flex flex-col gap-1 scroll-smooth">
                 {indexingLog.length > 0 ? (
                   indexingLog.map((msg, i) => (
-                    <p key={i} className={`text-xs font-mono ${
-                      i === indexingLog.length - 1 ? 'text-foreground' : 'text-muted-foreground'
-                    }`}>
+                    <p key={i} className={`text-xs font-mono ${i === indexingLog.length - 1 ? 'text-foreground' : 'text-muted-foreground'
+                      }`}>
                       {msg}
                     </p>
                   ))
@@ -171,6 +234,11 @@ export function RepositoryDetails() {
                   <p className="text-xs font-mono text-muted-foreground italic">
                     Awaiting progress updates...
                   </p>
+                )}
+                {indexingThinking && (
+                  <div className="mt-2 text-xs font-mono text-blue-400 whitespace-pre-wrap opacity-80">
+                    {indexingThinking}
+                  </div>
                 )}
               </div>
             </div>

@@ -20,6 +20,7 @@ export const useSocketEffect = ({
   onModelProgress,
   onIndexingProgress,
   onReviewProgress,
+  onAgentConfirmation,
   onConnect,
   onDisconnect,
 }: {
@@ -28,6 +29,7 @@ export const useSocketEffect = ({
   onModelProgress?: (data: any) => void;
   onIndexingProgress?: (data: any) => void;
   onReviewProgress?: (data: any) => void;
+  onAgentConfirmation?: (data: any) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
 }) => {
@@ -52,6 +54,12 @@ export const useSocketEffect = ({
 
     if (onReviewProgress) {
       reviewProgressListeners.set(listenerId.current, onReviewProgress);
+    }
+
+    if (onAgentConfirmation) {
+      import('@/components/providers/SocketProvider').then((mod) => {
+        mod.agentConfirmationListeners.set(listenerId.current, onAgentConfirmation);
+      });
     }
 
     if (onConnect) {

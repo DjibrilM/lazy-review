@@ -1,16 +1,19 @@
 import type { MainModule } from '../main.module.js';
-import { AiAgentService } from './ai-agent.service.js';
-import { ReviewService } from './review.service.js';
+import { CodeBaseIndexerAgent } from './code-base-indexer.agent.js';
+import { PrReviewAgent } from './pr-review.agent.js';
+import { ChatAgent } from './chat.agent.js';
 
 export class AiAgentModule {
   mainModule: MainModule;
-  service: AiAgentService;
-  review: ReviewService;
+  service: CodeBaseIndexerAgent;
+  prReviewAgent: PrReviewAgent;
+  chatAgent: ChatAgent;
 
   constructor(mainModule: MainModule) {
     this.mainModule = mainModule;
-    this.service = new AiAgentService(mainModule);
-    this.review = new ReviewService(mainModule);
+    this.service = new CodeBaseIndexerAgent(mainModule);
+    this.prReviewAgent = new PrReviewAgent(mainModule);
+    this.chatAgent = new ChatAgent(mainModule);
   }
 
   /** Cancel an in-progress indexing run. Returns false if none is running. */

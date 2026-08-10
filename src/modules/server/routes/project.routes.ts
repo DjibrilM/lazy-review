@@ -26,6 +26,10 @@ export default class ProjectRouts {
       return this.projectServices.getProjectById(req, res);
     });
 
+    this.app.delete('/projects/:id', (req, res) => {
+      return this.projectServices.deleteProject(req, res);
+    });
+
     this.app.post('/projects/:id/reindex', (req, res) => {
       return this.projectServices.reindexProject(req, res);
     });
@@ -34,44 +38,66 @@ export default class ProjectRouts {
       return this.projectServices.cancelIndexing(req, res);
     });
 
-    // AI-powered PR review generation
-    this.app.post('/projects/:id/review', async (req: any, res: any) => {
-      try {
-        const projectId = req.params.id as string;
-        const { prDiff, prTitle, prBody } = req.body;
-        if (!prDiff) return res.status(400).json({ error: 'prDiff is required' });
+    this.app.get('/projects/:id/review/:pull_number', (req, res) => {
+      return this.projectServices.getReview(req, res);
+    });
 
-        // Fire off in background so socket events stream to client
-        this.mainModule.aiAgent.review
-          .generatePRReview(projectId, prDiff, prTitle || 'Untitled PR', prBody || '')
-          .then((review) => res.json({ data: review }))
-          .catch((err: any) => {
-            console.error('Review generation failed:', err);
-            if (!res.headersSent) res.status(500).json({ error: err.message });
-          });
-      } catch (error: any) {
-        console.error('Failed to start review:', error);
-        return res.status(500).json({ error: error.message });
-      }
+    this.app.delete('/projects/:id/review/:pull_number', (req, res) => {
+      return this.projectServices.deleteReview(req, res);
+    });
+
+    this.app.post('/projects/:id/review/models/load', (req, res) => {
+      return this.projectServices.loadModels(req, res);
+    });
+
+    this.app.post('/projects/:id/review/models/unload', (req, res) => {
+      return this.projectServices.unloadModels(req, res);
+    });
+
+    // AI-powered PR review generation
+    this.app.post('/projects/:id/review', (req, res) => {
+      return this.projectServices.generateReview(req, res);
     });
 
     // Single-turn AI chat with project context
     this.app.post('/projects/:id/chat', async (req: any, res: any) => {
-      try {
-        const projectId = req.params.id as string;
-        const { history, message, prDiff } = req.body;
-        if (!message) return res.status(400).json({ error: 'message is required' });
+      const { id } = req.params;
+      const {
+        history,
+        message,
+        prDiff,
+        owner,
+        repo,
+        pull_number,
+        creator,
+        additions,
+        deletions,
+        changed_files,
+      } = req.body;
 
-        const reply = await this.mainModule.aiAgent.review.chat(
-          projectId,
+      try {
+        const stream = await this.mainModule.aiAgent.chatAgent.chatStream(
+          id,
           history || [],
           message,
           prDiff,
+          { owner, repo, pull_number, creator, additions, deletions, changed_files },
         );
-        return res.json({ data: { reply } });
+
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Transfer-Encoding', 'chunked');
+
+        for await (const chunk of stream) {
+          res.write(chunk);
+        }
+        res.end();
       } catch (error: any) {
         console.error('Chat failed:', error);
-        return res.status(500).json({ error: error.message });
+        if (!res.headersSent) {
+          return res.status(500).json({ error: error.message });
+        } else {
+          res.end();
+        }
       }
     });
   }

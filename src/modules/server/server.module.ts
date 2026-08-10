@@ -36,7 +36,7 @@ export class Server {
       const clientPath = path.join(process.cwd(), 'dist', 'client');
 
       this.app = express();
-      this.app.use(express.json());
+      this.app.use(express.json({ limit: '50mb' }));
       this.app.use(express.urlencoded({ extended: true }));
 
       spinner.start();

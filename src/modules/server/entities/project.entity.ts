@@ -23,6 +23,9 @@ class ProjectEntity extends BaseEntity {
   @Column({ type: 'json' })
   repositorySecrets: Record<string, string>;
 
+  @Column({ type: 'json', nullable: true })
+  pr_reviews: Record<string, any>;
+
   @Column({ nullable: true })
   ai_provider_id: string;
 

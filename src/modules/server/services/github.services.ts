@@ -68,12 +68,12 @@ class GithubServices {
     pull_number: number;
     body: string;
     event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
-    comments?: { path: string; position: number; body: string }[];
+    comments?: { path: string; position?: number; line?: number; body: string }[];
   }) {
     return this.githubModule.submitPRReview(args);
   }
 
-  async handleOperation() {}
+  async handleOperation(req: any, res: any) {}
 }
 
 export default GithubServices;

@@ -25,9 +25,9 @@ export function PRSummaryTab({ pr, review, reviewStatus, reviewMessage }: PRSumm
 
         {/* Review generation status banner */}
         {reviewStatus === 'running' && (
-          <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 border border-border rounded-md px-4 py-3">
+          <div className="flex items-center gap-3 p-4 bg-muted/30 border border-border rounded-md text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            <span className="font-mono text-xs">{reviewMessage || 'Generating AI review...'}</span>
+            <span className="font-mono text-xs">Generating AI review...</span>
           </div>
         )}
         {reviewStatus === 'error' && (

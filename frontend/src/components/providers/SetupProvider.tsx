@@ -1,40 +1,33 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import http from '../../lib/util/http';
+import { useEffect, type ReactNode } from 'react';
+import { atom, useAtomValue, useSetAtom } from 'jotai';
 import { useSocketEffect } from '../../lib/hooks/useSocketEffect';
-import { QWEN_MODEL_ID, GTE_MODEL_ID } from '../../../../src/constants';
+import { LLM_MODEL_ID, EMBEDDING_MODEL_ID } from '../../../../src/constants';
+import { qvacService } from '@/services/qvac.service';
 
-interface SetupContextState {
-  isSetupComplete: boolean;
-  loading: boolean;
-}
+const setupStateAtom = atom({ isSetupComplete: true, loading: true });
 
-const SetupContext = createContext<SetupContextState>({
-  isSetupComplete: true,
-  loading: true,
-});
+export const useSetup = () => useAtomValue(setupStateAtom);
 
 export const SetupProvider = ({ children }: { children: ReactNode }) => {
-  const [isSetupComplete, setIsSetupComplete] = useState<boolean>(true);
-  const [loading, setLoading] = useState<boolean>(true);
+  const setSetupState = useSetAtom(setupStateAtom);
 
   const checkSetup = async () => {
     try {
-      const res = await http.get<{ data: any[] }>('/qvac/models');
-      const models = res.data.data || [];
-      const qwenModel = models.find((m) => m.id === QWEN_MODEL_ID);
-      const gteModel = models.find((m) => m.id === GTE_MODEL_ID);
+      const models = await qvacService.getModels();
+      const gemmaModel = models.find((m: any) => m.id === LLM_MODEL_ID);
+      const gteModel = models.find((m: any) => m.id === EMBEDDING_MODEL_ID);
 
-      const isComplete = Boolean(qwenModel?.isCached && gteModel?.isCached);
-      setIsSetupComplete(isComplete);
+      const isComplete = Boolean(gemmaModel?.isCached && gteModel?.isCached);
+      setSetupState({ isSetupComplete: isComplete, loading: false });
     } catch (err) {
       console.error('Failed to fetch models for setup check:', err);
-    } finally {
-      setLoading(false);
+      setSetupState((prev) => ({ ...prev, loading: false }));
     }
   };
 
   useEffect(() => {
     checkSetup();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useSocketEffect({
@@ -45,11 +38,5 @@ export const SetupProvider = ({ children }: { children: ReactNode }) => {
     },
   });
 
-  return (
-    <SetupContext.Provider value={{ isSetupComplete, loading }}>
-      {children}
-    </SetupContext.Provider>
-  );
+  return <>{children}</>;
 };
-
-export const useSetup = () => useContext(SetupContext);

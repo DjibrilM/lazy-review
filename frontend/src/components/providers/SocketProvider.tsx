@@ -68,7 +68,7 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       });
     });
 
-    socketConnection.current.on('agent_confirmation', (data: AgentConfirmationRequest) => {
+    socketConnection.current.on('agent-confirmation-request', (data: AgentConfirmationRequest) => {
       agentConfirmationListeners.forEach((listener) => listener(data));
     });
 

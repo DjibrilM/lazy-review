@@ -157,5 +157,75 @@ export function createGitTools(projectRootPath: string) {
     },
   };
 
-  return [getCurrentBranchTool, getCommitsTool, readFileTool, searchInFilesTool];
+  const switchBranchTool = {
+    name: 'switch_branch',
+    description: 'Switch the current git branch to a different branch.',
+    parameters: z.object({
+      branch: z.string().describe('The name of the branch to switch to.'),
+    }),
+    handler: async (args: { branch: string }) => {
+      try {
+        await git.checkout(args.branch);
+        return { success: `Successfully switched to branch ${args.branch}` };
+      } catch (error: any) {
+        return { error: `Failed to switch branch: ${error.message}` };
+      }
+    },
+  };
+
+  const getPrFilesTool = {
+    name: 'get_pr_files',
+    description:
+      'Get a list of all files changed in the pull request comparing the current branch against a base branch.',
+    parameters: z.object({
+      base_branch: z.string().describe('The base branch (e.g., "main" or "master").'),
+    }),
+    handler: async (args: { base_branch: string }) => {
+      try {
+        const diffSummary = await git.diffSummary([`${args.base_branch}...HEAD`]);
+        return { files: diffSummary.files.map((f) => f.file) };
+      } catch (error: any) {
+        return { error: `Failed to get PR files: ${error.message}` };
+      }
+    },
+  };
+
+  const getFileDiffTool = {
+    name: 'get_file_diff',
+    description: 'Get the specific git diff for a single file in the pull request.',
+    parameters: z.object({
+      file_path: z.string().describe('The relative path of the file to diff.'),
+      base_branch: z.string().describe('The base branch (e.g., "main").'),
+    }),
+    handler: async (args: { file_path: string; base_branch: string }) => {
+      try {
+        const diff = await git.diff([`${args.base_branch}...HEAD`, '--', args.file_path]);
+        return { diff: diff || `No changes found for ${args.file_path}` };
+      } catch (error: any) {
+        return { error: `Failed to get file diff: ${error.message}` };
+      }
+    },
+  };
+
+  return [
+    getCurrentBranchTool,
+    getCommitsTool,
+    readFileTool,
+    searchInFilesTool,
+    switchBranchTool,
+    getPrFilesTool,
+    getFileDiffTool,
+  ];
+}
+
+export async function executeGitPull(absoluteRoot: string, progress: (msg: string) => void) {
+  try {
+    const { simpleGit } = await import('simple-git');
+    const git = simpleGit(absoluteRoot);
+    progress('🔄 Pulling latest changes from git...');
+    await git.pull();
+    progress('✅ Successfully pulled latest changes');
+  } catch (err: any) {
+    progress(`⚠️ Could not pull latest changes: ${err.message}`);
+  }
 }

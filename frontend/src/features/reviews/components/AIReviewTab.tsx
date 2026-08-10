@@ -12,9 +12,11 @@ interface ReviewIssue {
 
 interface AIReviewTabProps {
   setActiveTab: (tab: any) => void;
+  setSelectedFileForDiff?: (file: string | null) => void;
   issues: ReviewIssue[];
   reviewStatus: 'idle' | 'running' | 'success' | 'error';
   reviewMessage?: string;
+  onInitializeReview: () => void;
 }
 
 const SeverityIcon = ({ severity }: { severity: ReviewIssue['severity'] }) => {
@@ -35,23 +37,27 @@ const severityLabel: Record<ReviewIssue['severity'], string> = {
   suggestion: 'text-blue-400',
 };
 
-export function AIReviewTab({ setActiveTab, issues, reviewStatus, reviewMessage }: AIReviewTabProps) {
+export function AIReviewTab({ setActiveTab, setSelectedFileForDiff, issues, reviewStatus, reviewMessage, onInitializeReview }: AIReviewTabProps) {
   return (
     <div className="h-full bg-background overflow-y-auto w-full">
       <div className="p-8 max-w-4xl mx-auto">
         <h2 className="text-xl font-semibold text-foreground mb-6">Automated Architectural Checks</h2>
 
         {reviewStatus === 'idle' && (
-          <div className="text-muted-foreground text-sm flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Waiting for diff to load...
+          <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-lg bg-muted/10">
+            <Bot className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No AI Review Yet</h3>
+            <p className="text-sm text-muted-foreground mb-4">Initialize an AI review to analyze this PR against the project's architectural manifest.</p>
+            <button onClick={onInitializeReview} className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-purple-600 text-white hover:bg-purple-700 h-9 px-4 py-2">
+              Start AI Review
+            </button>
           </div>
         )}
 
         {reviewStatus === 'running' && (
           <div className="flex items-center gap-3 p-4 bg-muted/30 border border-border rounded-md text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            <span className="font-mono text-xs">{reviewMessage || 'Analyzing PR against architectural manifest...'}</span>
+            <span className="font-mono text-xs">Generating AI review...</span>
           </div>
         )}
 
@@ -104,7 +110,12 @@ export function AIReviewTab({ setActiveTab, issues, reviewStatus, reviewMessage 
                       <div className="flex gap-2">
                         <button
                           className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-                          onClick={() => setActiveTab('files')}
+                          onClick={() => {
+                            if (setSelectedFileForDiff && issue.file) {
+                              setSelectedFileForDiff(issue.file);
+                            }
+                            setActiveTab('files');
+                          }}
                         >
                           View in Diff
                         </button>

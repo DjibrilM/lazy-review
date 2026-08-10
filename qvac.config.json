@@ -1,7 +1,7 @@
 {
   "models": {
     "coding-llm": {
-      "model": "QWEN2.5_CODER_7B_Q4",
+      "model": "GEMMA4_4B_MULTIMODAL_Q6_K",
       "preload": true,
       "config": {
         "tools": true
