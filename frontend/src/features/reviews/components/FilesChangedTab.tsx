@@ -1,98 +1,191 @@
-import { FileText } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/util/shared';
+import { useEffect, useMemo, useState } from 'react';
 
-const MOCK_DIFF = [
-  { type: 'header', content: '@@ -7,4 +7,16 @@', oldLine: null, newLine: null },
-  { type: 'unchanged', content: ' // Database connection initialized', oldLine: 7, newLine: 7 },
-  { type: 'unchanged', content: ' ', oldLine: 8, newLine: 8 },
-  { type: 'removed', content: '-function authenticate(username) {', oldLine: 9, newLine: null },
-  { type: 'removed', content: '-    return true;', oldLine: 10, newLine: null },
-  { type: 'removed', content: '-}', oldLine: 11, newLine: null },
-  {
-    type: 'added',
-    content: '+function authenticate(username, password) {',
-    oldLine: null,
-    newLine: 9,
-  },
-  { type: 'added', content: '+    // TODO: Hash password later', oldLine: null, newLine: 10 },
-  { type: 'added', content: '+    let db = getDbConnection();', oldLine: null, newLine: 11 },
-  {
-    type: 'added',
-    content:
-      '+    let query = "SELECT * FROM users WHERE username = \'" + username + "\' AND password = \'" + password + "\'";',
-    oldLine: null,
-    newLine: 12,
-  },
-  { type: 'added', content: '+    let result = db.execute(query);', oldLine: null, newLine: 13 },
-  { type: 'added', content: '+', oldLine: null, newLine: 14 },
-  { type: 'added', content: '+    if (result.length > 0) {', oldLine: null, newLine: 15 },
-  { type: 'added', content: '+        console.log("Login success");', oldLine: null, newLine: 16 },
-  { type: 'added', content: '+        return true;', oldLine: null, newLine: 17 },
-  { type: 'added', content: '+    } else {', oldLine: null, newLine: 18 },
-  { type: 'added', content: '+    }', oldLine: null, newLine: 19 },
-  { type: 'added', content: '+}', oldLine: null, newLine: 20 },
-];
+interface DiffLine {
+  type: 'header' | 'file' | 'added' | 'removed' | 'unchanged' | 'hunk';
+  content: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
 
-export function FilesChangedTab() {
+interface FilePatch {
+  fileName: string;
+  additions: number;
+  deletions: number;
+  lines: DiffLine[];
+}
+
+/** Parse a unified diff string into file patches */
+function parseDiff(diff: string): FilePatch[] {
+  const files: FilePatch[] = [];
+  let current: FilePatch | null = null;
+  let oldLineNum = 0;
+  let newLineNum = 0;
+
+  for (const raw of diff.split('\n')) {
+    if (raw.startsWith('diff --git')) {
+      if (current) files.push(current);
+      current = { fileName: '', additions: 0, deletions: 0, lines: [] };
+      continue;
+    }
+    if (raw.startsWith('--- ') || raw.startsWith('+++ ')) {
+      if (current && raw.startsWith('+++ ')) {
+        // Extract file name: strip "b/" prefix that git adds
+        current.fileName = raw.replace('+++ b/', '').replace('+++ ', '').trim();
+      }
+      continue;
+    }
+    if (raw.startsWith('@@')) {
+      // Parse hunk header: @@ -old,count +new,count @@
+      const match = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        oldLineNum = parseInt(match[1], 10);
+        newLineNum = parseInt(match[2], 10);
+      }
+      current?.lines.push({ type: 'hunk', content: raw, oldLine: null, newLine: null });
+      continue;
+    }
+    if (!current) continue;
+
+    if (raw.startsWith('+')) {
+      current.lines.push({ type: 'added', content: raw, oldLine: null, newLine: newLineNum++ });
+      current.additions++;
+    } else if (raw.startsWith('-')) {
+      current.lines.push({ type: 'removed', content: raw, oldLine: oldLineNum++, newLine: null });
+      current.deletions++;
+    } else if (raw.startsWith('\\')) {
+      // "No newline at end of file" marker — skip
+    } else {
+      current.lines.push({ type: 'unchanged', content: raw, oldLine: oldLineNum++, newLine: newLineNum++ });
+    }
+  }
+  if (current) files.push(current);
+  return files.filter((f) => f.fileName);
+}
+
+interface FilesChangedTabProps {
+  diff: string;
+  isLoading?: boolean;
+  selectedFileForDiff?: string | null;
+}
+
+export function FilesChangedTab({ diff, isLoading, selectedFileForDiff }: FilesChangedTabProps) {
+  const patches = useMemo(() => parseDiff(diff || ''), [diff]);
+  const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>(() => {
+    // First file expanded by default
+    return {};
+  });
+
+  useEffect(() => {
+    if (selectedFileForDiff) {
+      setExpandedFiles((prev) => ({ ...prev, [selectedFileForDiff]: true }));
+      setTimeout(() => {
+        const el = document.getElementById(`diff-file-${selectedFileForDiff}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [selectedFileForDiff]);
+
+  if (isLoading) {
+    return (
+      <div className="h-full bg-background flex items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        <span className="text-sm">Loading diff...</span>
+      </div>
+    );
+  }
+
+  if (!diff || patches.length === 0) {
+    return (
+      <div className="h-full bg-background flex items-center justify-center text-muted-foreground text-sm">
+        No changes to display.
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full bg-background min-w-[600px] flex flex-col overflow-hidden relative">
-      <div className="bg-card border-b border-border px-4 py-2 text-sm text-muted-foreground flex justify-between items-center shrink-0">
-        <div className="flex items-center">
-          <FileText className="w-4 h-4 mr-2" />
-          <span className="font-mono text-card-foreground">src/database.js</span>
-        </div>
-        <div className="flex items-center space-x-3 text-xs font-mono">
-          <span className="text-emerald-500">+12 additions</span>
-          <span className="text-red-500">-3 deletions</span>
-        </div>
+    <div className="h-full bg-background flex flex-col overflow-hidden">
+      {/* File summary bar */}
+      <div className="bg-card border-b border-border px-4 py-2 text-xs text-muted-foreground flex items-center gap-3 shrink-0">
+        <FileText className="w-4 h-4" />
+        <span>{patches.length} file{patches.length !== 1 ? 's' : ''} changed</span>
+        <span className="text-emerald-500">+{patches.reduce((a, f) => a + f.additions, 0)}</span>
+        <span className="text-red-500">-{patches.reduce((a, f) => a + f.deletions, 0)}</span>
       </div>
 
-      <div className="flex-1 overflow-auto bg-background p-4">
-        <div className="border border-border rounded-md overflow-hidden bg-background font-mono text-[13px] leading-5 shadow-lg">
-          {MOCK_DIFF.map((line, idx) => {
-            let rowBg = 'bg-transparent';
-            let textCol = 'text-foreground';
-            let lineNumBg = 'bg-background text-muted-foreground';
-
-            if (line.type === 'header') {
-              rowBg = 'bg-muted';
-              textCol = 'text-muted-foreground';
-              lineNumBg = 'bg-muted text-muted-foreground border-none';
-            } else if (line.type === 'added') {
-              rowBg = 'bg-emerald-500/15';
-              textCol = 'text-emerald-300';
-              lineNumBg = 'bg-emerald-500/10 text-foreground';
-            } else if (line.type === 'removed') {
-              rowBg = 'bg-red-500/15';
-              textCol = 'text-red-300';
-              lineNumBg = 'bg-red-500/10 text-foreground';
-            }
-
-            return (
-              <div key={idx} className={cn('flex hover:bg-muted/50 group', rowBg)}>
-                <div
-                  className={cn(
-                    'w-10 text-right pr-2 py-0.5 select-none border-r border-border',
-                    lineNumBg,
-                    line.type === 'header' && 'border-r-0 w-20 text-left pl-4'
-                  )}
-                >
-                  {line.type !== 'header' && (line.oldLine || '')}
+      <div className="flex-1 overflow-auto p-4 space-y-4">
+        {patches.map((patch, fi) => {
+          const isExpanded = expandedFiles[patch.fileName] !== false; // expanded by default
+          return (
+            <div key={fi} id={`diff-file-${patch.fileName}`} className="border border-border rounded-md overflow-hidden shadow-sm">
+              {/* File header */}
+              <button
+                className="w-full bg-card border-b border-border px-4 py-2 text-sm flex items-center justify-between hover:bg-muted/40 transition-colors"
+                onClick={() =>
+                  setExpandedFiles((prev) => ({ ...prev, [patch.fileName]: !isExpanded }))
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-mono text-card-foreground text-[13px]">{patch.fileName}</span>
                 </div>
-                {line.type !== 'header' && (
-                  <div
-                    className={cn('w-10 text-right pr-2 py-0.5 select-none border-r border-border', lineNumBg)}
-                  >
-                    {line.newLine || ''}
-                  </div>
-                )}
-                <div className={cn('flex-1 pl-4 py-0.5 whitespace-pre', textCol)}>
-                  {line.content}
+                <div className="flex items-center gap-3 text-xs font-mono">
+                  <span className="text-emerald-500">+{patch.additions}</span>
+                  <span className="text-red-500">-{patch.deletions}</span>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              </button>
+
+              {isExpanded && (
+                <div className="overflow-x-auto bg-background font-mono text-[12px] leading-5">
+                  {patch.lines.map((line, li) => {
+                    let rowBg = 'bg-transparent';
+                    let textCol = 'text-foreground';
+                    let numBg = 'bg-background text-muted-foreground';
+
+                    if (line.type === 'hunk') {
+                      rowBg = 'bg-muted/60';
+                      textCol = 'text-muted-foreground';
+                      numBg = 'bg-muted/60 border-r-0';
+                    } else if (line.type === 'added') {
+                      rowBg = 'bg-emerald-500/10';
+                      textCol = 'text-emerald-300';
+                      numBg = 'bg-emerald-500/10 text-muted-foreground';
+                    } else if (line.type === 'removed') {
+                      rowBg = 'bg-red-500/10';
+                      textCol = 'text-red-300';
+                      numBg = 'bg-red-500/10 text-muted-foreground';
+                    }
+
+                    if (line.type === 'hunk') {
+                      return (
+                        <div key={li} className={cn('px-4 py-0.5', rowBg, textCol)}>
+                          {line.content}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={li} className={cn('flex hover:bg-muted/30 group', rowBg)}>
+                        <div className={cn('w-10 text-right pr-2 py-0.5 select-none border-r border-border/50 shrink-0', numBg)}>
+                          {line.oldLine ?? ''}
+                        </div>
+                        <div className={cn('w-10 text-right pr-2 py-0.5 select-none border-r border-border/50 shrink-0', numBg)}>
+                          {line.newLine ?? ''}
+                        </div>
+                        <div className={cn('flex-1 pl-4 py-0.5 whitespace-pre', textCol)}>
+                          {line.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

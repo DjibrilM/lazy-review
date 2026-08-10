@@ -12,7 +12,11 @@ export function sendAgentFeedbackResponse(id: string, approved: boolean, feedbac
   }
 }
 
-export function sendAgentCredentialsResponse(id: string, approved: boolean, credentials?: Record<string, string>) {
+export function sendAgentCredentialsResponse(
+  id: string,
+  approved: boolean,
+  credentials?: Record<string, string>,
+) {
   if (activeSocket) {
     activeSocket.emit('agent-credentials-response', { id, approved, credentials });
   }

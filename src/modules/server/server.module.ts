@@ -36,7 +36,7 @@ export class Server {
       const clientPath = path.join(process.cwd(), 'dist', 'client');
 
       this.app = express();
-      this.app.use(express.json());
+      this.app.use(express.json({ limit: '50mb' }));
       this.app.use(express.urlencoded({ extended: true }));
 
       spinner.start();
@@ -51,7 +51,8 @@ export class Server {
 
       this.httpServer = this.app.listen(this.port, () => {
         console.log(
-          `${chalk.green('[LAZY-REVIEW]')}: Server started at ${chalk.bold.blue(`http://localhost:${this.port}`)}`,
+          chalk.green(`[LAZY-REVIEW] Express server listening at `) +
+            chalk.bold.blue(`http://localhost:${this.port}`),
         );
       });
 

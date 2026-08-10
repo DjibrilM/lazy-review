@@ -38,7 +38,42 @@ class GithubServices {
     return this.githubModule.getPullRequests({ owner, repo });
   }
 
-  async handleOperation(req: Request, res: Response) {}
+  async getPRDiff({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }) {
+    return this.githubModule.getPRDiff({ owner, repo, pull_number });
+  }
+
+  async getPRCommits({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }) {
+    return this.githubModule.getPRCommits({ owner, repo, pull_number });
+  }
+
+  async submitPRReview(args: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+    body: string;
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+    comments?: { path: string; position?: number; line?: number; body: string }[];
+  }) {
+    return this.githubModule.submitPRReview(args);
+  }
+
+  async handleOperation(req: any, res: any) {}
 }
 
 export default GithubServices;

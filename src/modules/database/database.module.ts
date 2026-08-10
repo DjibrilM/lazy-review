@@ -3,34 +3,21 @@ import ora from 'ora';
 
 import { DataSource } from 'typeorm';
 import ProjectEntity from '../server/entities/project.entity.js';
-import AiProviderEntity from '../server/entities/ai-provider.entity.js';
-import TerminalLogEntity from '../server/entities/terminal-log.entity.js';
-import AgentTaskEntity from '../server/entities/agent-task.entity.js';
-import DeploymentPlanEntity from '../server/entities/deployment-plan.entity.js';
-import DeploymentPlanRevisionEntity from '../server/entities/deployment-plan-revision.entity.js';
-import DeploymentPlanFeedbackEntity from '../server/entities/deployment-plan-feedback.entity.js';
-import DeploymentPlanApprovalEntity from '../server/entities/deployment-plan-approval.entity.js';
-import DeploymentPlanArtifactEntity from '../server/entities/deployment-plan-artifact.entity.js';
+import SettingsEntity from '../server/entities/settings.entity.js';
+import { VectorDatabaseService } from './vector-database.service.js';
+
 class DatabaseModule {
   appDataSource: DataSource;
+  vectorDatabase: VectorDatabaseService;
 
   constructor() {
+    this.vectorDatabase = new VectorDatabaseService();
     this.appDataSource = new DataSource({
       type: 'better-sqlite3',
       database: 'database.sqlite',
       synchronize: true,
       logging: false,
-      entities: [
-        ProjectEntity,
-        AiProviderEntity,
-        TerminalLogEntity,
-        AgentTaskEntity,
-        DeploymentPlanEntity,
-        DeploymentPlanRevisionEntity,
-        DeploymentPlanFeedbackEntity,
-        DeploymentPlanApprovalEntity,
-        DeploymentPlanArtifactEntity,
-      ],
+      entities: [ProjectEntity, SettingsEntity],
       migrations: [],
       subscribers: [],
     });

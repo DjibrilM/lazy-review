@@ -34,6 +34,8 @@ export const agentConfirmationListeners = new Map<string, (data: AgentConfirmati
 export const agentFeedbackListeners = new Map<string, (data: AgentFeedbackRequest) => void>();
 export const agentCredentialsListeners = new Map<string, (data: AgentCredentialsRequest) => void>();
 export const modelProgressListeners = new Map<string, (data: any) => void>();
+export const indexingProgressListeners = new Map<string, (data: any) => void>();
+export const reviewProgressListeners = new Map<string, (data: any) => void>();
 
 export let activeSocket: Socket | null = null;
 
@@ -66,7 +68,7 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       });
     });
 
-    socketConnection.current.on('agent_confirmation', (data: AgentConfirmationRequest) => {
+    socketConnection.current.on('agent-confirmation-request', (data: AgentConfirmationRequest) => {
       agentConfirmationListeners.forEach((listener) => listener(data));
     });
 
@@ -80,6 +82,14 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
     socketConnection.current.on('model_progress', (data: any) => {
       modelProgressListeners.forEach((listener) => listener(data));
+    });
+
+    socketConnection.current.on('indexing_progress', (data: any) => {
+      indexingProgressListeners.forEach((listener) => listener(data));
+    });
+
+    socketConnection.current.on('review_progress', (data: any) => {
+      reviewProgressListeners.forEach((listener) => listener(data));
     });
 
     return () => {

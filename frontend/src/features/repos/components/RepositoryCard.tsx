@@ -1,7 +1,10 @@
-import { ExternalLink, GitBranch, Terminal, Globe, Code2, Cloud, Clock } from 'lucide-react';
+import { ExternalLink, GitBranch, Terminal, Code2, Cloud, Clock } from 'lucide-react';
 import { cn } from '@/lib/util/shared';
 import { useNavigate } from 'react-router-dom';
-
+import { useSetup } from '@/components/providers/SetupProvider';
+import { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 export interface Repo {
   id: number;
   name: string;
@@ -18,14 +21,32 @@ interface RepositoryCardProps {
 }
 
 export const RepositoryCard = ({ repo, viewType = 'card' }: RepositoryCardProps) => {
-  const isList = viewType === 'list';
+  const isList = viewType === 'card' ? false : true;
   const navigate = useNavigate();
+  const { isSetupComplete } = useSetup();
+  const [showSetupWarning, setShowSetupWarning] = useState(false);
+
+  useEffect(() => {
+    if (isSetupComplete && showSetupWarning) {
+      setShowSetupWarning(false);
+    }
+  }, [isSetupComplete, showSetupWarning]);
+
+  const handleOpen = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!isSetupComplete) {
+      setShowSetupWarning(true);
+      return;
+    }
+    navigate(`/repo/${repo.id}`);
+  };
 
   return (
-    <div
-      onClick={() => navigate(`/repo/${repo.id}`)}
-      className={cn(
-        'group cursor-pointer border border-border bg-card transition-all hover:border-primary hover:shadow-sm rounded-md',
+    <>
+      <div
+        onClick={() => handleOpen()}
+        className={cn(
+          'group cursor-pointer border border-border bg-card transition-all hover:border-primary hover:shadow-sm rounded-md',
         isList ? 'px-4 py-3 flex items-center justify-between gap-4' : 'p-5 flex flex-col h-full',
       )}
     >
@@ -33,7 +54,9 @@ export const RepositoryCard = ({ repo, viewType = 'card' }: RepositoryCardProps)
         className={cn('flex-1 min-w-0', isList ? 'flex items-center gap-4' : 'flex flex-col mb-4')}
       >
         <div className={cn('flex items-center gap-2', isList ? '' : 'mb-1')}>
-          <Globe size={14} className="text-emerald-500 shrink-0" />
+          <div className="w-5 bg-white/10 h-5 border border-border rounded-md overflow-hidden">
+            <img src={`https://github.com/${repo.owner}.png`} alt={repo.owner} className="w-full h-full object-cover" />
+          </div>
           <h3 className="font-mono text-base font-bold text-foreground group-hover:text-primary transition-colors truncate">
             {repo.owner}/{repo.name}
           </h3>
@@ -104,10 +127,7 @@ export const RepositoryCard = ({ repo, viewType = 'card' }: RepositoryCardProps)
 
           <div className="flex items-center justify-end">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/repo/${repo.id}`);
-              }}
+              onClick={(e) => handleOpen(e)}
               className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors border border-transparent hover:border-border p-1.5 bg-transparent hover:bg-accent rounded-sm"
               title="Open AI Review Workspace"
             >
@@ -117,5 +137,19 @@ export const RepositoryCard = ({ repo, viewType = 'card' }: RepositoryCardProps)
         </div>
       </div>
     </div>
+
+      <Dialog open={showSetupWarning} onOpenChange={setShowSetupWarning}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Setup Required</DialogTitle>
+          <DialogDescription className="py-2">
+            You must complete the AI model setup before you can open a repository. Please go to Settings to download the required local models. Once the download is complete, the frontend will automatically unlock.
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSetupWarning(false)}>Cancel</Button>
+            <Button onClick={() => { setShowSetupWarning(false); navigate('/settings'); }}>Go to Settings</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };

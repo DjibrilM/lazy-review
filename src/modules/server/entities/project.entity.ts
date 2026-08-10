@@ -1,11 +1,4 @@
-import {
-  BaseEntity,
-  Entity,
-  Column,
-  PrimaryGeneratedColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { BaseEntity, Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
 class ProjectEntity extends BaseEntity {
@@ -30,6 +23,9 @@ class ProjectEntity extends BaseEntity {
   @Column({ type: 'json' })
   repositorySecrets: Record<string, string>;
 
+  @Column({ type: 'json', nullable: true })
+  pr_reviews: Record<string, any>;
+
   @Column({ nullable: true })
   ai_provider_id: string;
 
@@ -38,6 +34,9 @@ class ProjectEntity extends BaseEntity {
 
   @Column({ type: 'json', nullable: true })
   analysis: Record<string, any>;
+
+  @Column({ default: 1 })
+  indexing_version: number;
 
   @Column({ type: 'text', nullable: true })
   current_task: string | null;

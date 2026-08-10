@@ -8,6 +8,7 @@
   },
   "main": "dist/bin.js",
   "scripts": {
+    "agent": "tsx agent.ts",
     "test": "echo \"Error: no test specified\" && exit 0",
     "dev": "concurrently \"pnpm:watch\" \"pnpm:link-watch\" \"pnpm:frontend:dev\"",
     "dev:server": "nodemon --watch dist --ext js dist/dev.js",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/chalk-animation": "^1.6.3",
     "@types/express": "^5.0.3",
     "@types/node": "^24.6.2",
@@ -71,6 +73,12 @@
     "sqlite-vec": "^0.1.9",
     "sqlite3": "^6.0.1",
     "ssh2": "^1.17.0",
+    "tree-sitter": "^0.25.1",
+    "tree-sitter-go": "^0.25.0",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-rust": "^0.24.0",
+    "tree-sitter-typescript": "^0.23.2",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
     "typeorm": "^1.0.0",

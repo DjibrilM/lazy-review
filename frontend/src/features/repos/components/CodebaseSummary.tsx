@@ -1,44 +1,122 @@
 import { useState } from 'react';
-import { Terminal, DatabaseBackup, FileText } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+ import { FileText, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import MarkdownPreview from '@uiw/react-markdown-preview';
+import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
+import { useParams } from 'react-router-dom';
 
-export const MOCK_FACTS = {
-  project_name: 'auth-service',
-  architecture_pattern: 'Modular Monolith',
-  core_modules: [
-    { path: 'src/auth', desc: 'Handles JWT generation, OAuth, and password hashing.' },
-    { path: 'src/database', desc: 'Contains TypeORM entities and SQLite connections.' },
-    { path: 'src/api', desc: 'Express.js REST endpoints and middleware.' },
-  ],
-  key_conventions: [
-    'All database calls must go through the repository pattern.',
-    'Endpoints must validate payloads using Zod schemas.',
-    'Do not use string concatenation for SQL queries to prevent injections.',
-  ],
-};
+type IndexingStatus = 'idle' | 'running' | 'success' | 'error';
 
-export function CodebaseSummary() {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const showFacts = true;
+interface CodebaseSummaryProps {
+  initialFacts?: any;
+}
 
-  const handleGenerate = () => {
-    setIsGenerating(true);
-    setTimeout(() => setIsGenerating(false), 2000);
+export function CodebaseSummary({ initialFacts }: CodebaseSummaryProps) {
+  const { id: repoId } = useParams<{ id: string }>();
+  const [statusMessage, setStatusMessage] = useState('');
+  const [indexingStatus, setIndexingStatus] = useState<IndexingStatus>('idle');
+  const [facts, setFacts] = useState<any>(initialFacts || null);
+
+  useSocketEffect({
+    onIndexingProgress: (data: any) => {
+      if (data.projectId && repoId && data.projectId !== repoId) return;
+
+      if (data.status === 'running') {
+        setIndexingStatus('running');
+        setStatusMessage(data.message || 'Scanning codebase...');
+      } else if (data.status === 'success') {
+        setIndexingStatus('success');
+        setStatusMessage('Indexing complete!');
+        if (data.facts) setFacts(data.facts);
+      } else if (data.status === 'error') {
+        setIndexingStatus('error');
+        setStatusMessage(data.message || 'An unknown error occurred during indexing.');
+      }
+    }
+  });
+
+  const StatusBadge = () => {
+    if (indexingStatus === 'running') {
+      return (
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          {statusMessage}
+        </span>
+      );
+    }
+    if (indexingStatus === 'success') {
+      return (
+        <span className="flex items-center gap-1.5 text-sm text-green-500">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          {statusMessage}
+        </span>
+      );
+    }
+    if (indexingStatus === 'error') {
+      return (
+        <span className="flex items-center gap-1.5 text-sm text-destructive">
+          <AlertCircle className="w-3.5 h-3.5" />
+          Indexing failed
+        </span>
+      );
+    }
+    return null;
   };
 
-  const markdownContent = `
-# ${MOCK_FACTS.project_name} - Architectural Manifest
+  const currentFacts = facts;
 
-## Architecture Pattern
-**${MOCK_FACTS.architecture_pattern}**
+  if (!currentFacts) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-muted/10 border-border">
+          <CardHeader>
+            <div className="flex justify-between items-center w-full">
+              <div>
+                <CardTitle>Architectural Manifest</CardTitle>
+                <CardDescription>
+                  No codebase facts have been indexed yet.
+                </CardDescription>
+              </div>
+              <StatusBadge />
+            </div>
+          </CardHeader>
+        </Card>
+        {indexingStatus === 'error' && (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="p-4">
+              <div className="flex gap-3 items-start">
+                <AlertCircle className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-destructive mb-1">Indexing Error</p>
+                  <p className="text-sm text-muted-foreground font-mono break-all">{statusMessage}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  const markdownContent = `
+# ${currentFacts.project_name || 'Project'} - Architectural Manifest
+
+## Overview
+This is a ${currentFacts.application_type || 'software application'} built using the ${currentFacts.architecture_pattern || 'Unknown'} architecture pattern.
+
+${currentFacts.explanation || 'No detailed explanation provided.'}
+
+## Technology Stack
+${(currentFacts.tech_stack || []).map((tech: string) => `- ${tech}`).join('\n')}
 
 ## Core Modules
-${MOCK_FACTS.core_modules.map((m) => `- \`${m.path}\`: ${m.desc}`).join('\n')}
+${(currentFacts.core_modules || []).map((m: any) => `- \`${m.path}\`: ${m.desc}`).join('\n')}
 
 ## Key Conventions
-${MOCK_FACTS.key_conventions.map((k) => `- ${k}`).join('\n')}
+${(currentFacts.key_conventions || []).map((k: string) => `- ${k}`).join('\n')}
+
+## Required Secrets & Environment Variables
+${(currentFacts.required_secrets || []).map((s: any) => `- **${s.key}**: ${s.description}`).join('\n')}
   `;
 
   return (
@@ -52,36 +130,38 @@ ${MOCK_FACTS.key_conventions.map((k) => `- ${k}`).join('\n')}
                 The AI's local understanding of this repository's structure and rules.
               </CardDescription>
             </div>
-            <Button variant="outline" onClick={handleGenerate} disabled={isGenerating}>
-              {isGenerating ? (
-                <span className="flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-sm animate-pulse" /> Scanning codebase...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <DatabaseBackup className="w-4 h-4 text-white" /> Re-index Codebase
-                </span>
-              )}
-            </Button>
+            <StatusBadge />
           </div>
         </CardHeader>
       </Card>
 
-      {showFacts && (
-        <Card className="overflow-hidden shadow-md border-border bg-card">
-          <div className="border-b border-border px-4 py-2 text-muted-foreground flex items-center text-sm font-mono">
-            <FileText className="w-4 h-4 mr-2" />
-            CODEBASE_FACTS.md
-          </div>
-          <CardContent className="p-6 overflow-x-auto">
-            <MarkdownPreview
-              source={markdownContent}
-              style={{ backgroundColor: 'transparent' }}
-              className="text-sm! md:text-base!"
-            />
+      {indexingStatus === 'error' && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="p-4">
+            <div className="flex gap-3 items-start">
+              <AlertCircle className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-destructive mb-1">Re-indexing Failed</p>
+                <p className="text-sm text-muted-foreground font-mono break-all">{statusMessage}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      <Card className="overflow-hidden shadow-md border-border bg-card">
+        <div className="border-b border-border px-4 py-2 text-muted-foreground flex items-center text-sm font-mono">
+          <FileText className="w-4 h-4 mr-2" />
+          CODEBASE_FACTS.md
+        </div>
+        <CardContent className="p-6 overflow-x-auto">
+          <MarkdownPreview
+            source={markdownContent}
+            style={{ backgroundColor: 'transparent' }}
+            className="text-sm! md:text-base!"
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

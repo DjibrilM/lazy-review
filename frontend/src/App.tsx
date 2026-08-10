@@ -5,10 +5,12 @@ import { RepositoryDetails } from './features/repos/pages/RepositoryDetails';
 import { PRReview } from './features/reviews/pages/PRReview';
 import { Settings } from './features/settings/pages/Settings';
 import SocketProvider from './components/providers/SocketProvider';
+import { SetupProvider } from './components/providers/SetupProvider';
 
 function App() {
   return (
     <SocketProvider>
+      <SetupProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<MainLayout />}>
@@ -19,6 +21,7 @@ function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </SetupProvider>
     </SocketProvider>
   );
 }

@@ -1,0 +1,2 @@
+export const LLM_MODEL_ID = 'GEMMA4_4B_MULTIMODAL_Q6_K';
+export const EMBEDDING_MODEL_ID = 'GTE_LARGE_FP16';

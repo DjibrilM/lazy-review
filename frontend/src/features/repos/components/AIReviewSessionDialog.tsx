@@ -9,7 +9,7 @@ export function AIReviewSessionDialog({
 }: {
   prToOpen: any;
   onClose: () => void;
-  onSelectPR: (pr: any) => void;
+  onSelectPR: (pr: any, startFresh: boolean) => void;
 }) {
   return (
     <Dialog open={!!prToOpen} onOpenChange={(open) => !open && onClose()}>
@@ -38,7 +38,7 @@ export function AIReviewSessionDialog({
               {prToOpen.hasExistingReview ? (
                 <>
                   <Button 
-                    onClick={() => onSelectPR(prToOpen)}
+                    onClick={() => onSelectPR(prToOpen, false)}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     <Play className="w-4 h-4 mr-2" />
@@ -46,7 +46,7 @@ export function AIReviewSessionDialog({
                   </Button>
                   <Button 
                     variant="outline"
-                    onClick={() => onSelectPR(prToOpen)}
+                    onClick={() => onSelectPR(prToOpen, true)}
                     className="w-full"
                   >
                     <Bot className="w-4 h-4 mr-2" />
@@ -55,7 +55,7 @@ export function AIReviewSessionDialog({
                 </>
               ) : (
                 <Button 
-                  onClick={() => onSelectPR(prToOpen)}
+                  onClick={() => onSelectPR(prToOpen, true)}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Play className="w-4 h-4 mr-2" />
