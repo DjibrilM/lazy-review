@@ -92,21 +92,7 @@ export function useChat(
       const cleanReply = fullReply.replace(/<tool_call>[\s\S]*?<\/tool_call>\s*/g, '');
       chatHistoryRef.current.push({ role: 'assistant', content: cleanReply });
 
-      // Detect if the AI is ready to submit a review
-      const lowerReply = cleanReply.toLowerCase();
-      const wantsRequestChanges =
-        lowerReply.includes('request changes') ||
-        lowerReply.includes('request_changes') ||
-        lowerReply.includes('shall i submit') ||
-        lowerReply.includes('should i submit');
-
-      if (wantsRequestChanges) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantId ? { ...msg, requiresConfirmation: 'request_changes' } : msg,
-          ),
-        );
-      }
+      // Legacy check removed: we now use explicit tools for GitHub actions.
     } catch (err: unknown) {
       setMessages((prev) =>
         prev.map((msg) =>

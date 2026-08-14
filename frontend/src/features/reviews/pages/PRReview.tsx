@@ -1,49 +1,48 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable';
+import Visibility from '@/components/common/Visible';
+import { projectService } from '@/services/project.service';
+import { githubService } from '@/services/github.service';
+import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
+
 import { PRSummaryTab } from '../components/PRSummaryTab';
 import { AIReviewTab } from '../components/AIReviewTab';
 import { FilesChangedTab } from '../components/FilesChangedTab';
 import { PRReviewHeader } from '../components/PRReviewHeader';
 import { AIChatSidebar } from '../components/AIChatSidebar';
-import Visibility from '@/components/common/Visible';
-import { useQuery } from '@tanstack/react-query';
-import { projectService } from '@/services/project.service';
-import { githubService } from '@/services/github.service';
-import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
 import { useChat } from '../hooks/useChat';
 
-
 type TabType = 'pr_summary' | 'ai_review' | 'files';
-
+type ReviewStatus = 'idle' | 'running' | 'success' | 'error';
 
 export function PRReview() {
   const { id, prId } = useParams();
+
   const [activeTab, setActiveTab] = useState<TabType>('pr_summary');
-  const [isModelLoading, setIsModelLoading] = useState<boolean>(true);
+  const [isModelLoading, setIsModelLoading] = useState(true);
+  const [modelLoadingMessage, setModelLoadingMessage] = useState(
+    'Loading the models used for review and chat.',
+  );
+  const [review, setReview] = useState<any>(null);
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>('idle');
+  const [reviewMessage, setReviewMessage] = useState('');
+  const [selectedFileForDiff, setSelectedFileForDiff] = useState<string | null>(null);
 
-  // Eager load models on mount, unload on unmount
-  useEffect(() => {
-    if (!id || reviewStatus === 'running') return;
-    let mounted = true;
-    setIsModelLoading(true);
-
-    projectService.loadModels(id)
-      .then(() => {
-        if (mounted) setIsModelLoading(false);
-      })
-      .catch((err) => {
-        console.error(err);
-        if (mounted) setIsModelLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-      projectService.unloadModels(id).catch(err => console.error(err));
-    };
-  }, [id]);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const { data: repo, isLoading: isLoadingRepo } = useQuery({
     queryKey: ['local-project', id],
@@ -61,28 +60,65 @@ export function PRReview() {
     enabled: !!owner && !!repoName,
   });
 
-  const pr = prs.find((p: { number: number;[key: string]: unknown }) => p.number === pullNumber);
+  const pr = prs.find(
+    (pullRequest: { number: number;[key: string]: unknown }) =>
+      pullRequest.number === pullNumber,
+  );
 
-  // Real commits from GitHub
   const { data: commits = [] } = useQuery({
     queryKey: ['pr-commits', owner, repoName, pullNumber],
     queryFn: () => githubService.getPRCommits(owner, repoName, pullNumber),
     enabled: !!owner && !!repoName && !!pullNumber,
   });
 
-  // Real PR diff
   const { data: prDiff = '', isLoading: isLoadingDiff } = useQuery({
     queryKey: ['pr-diff', owner, repoName, pullNumber],
     queryFn: () => githubService.getPRDiff(owner, repoName, pullNumber),
     enabled: !!owner && !!repoName && !!pullNumber,
   });
 
-  // AI review state
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [review, setReview] = useState<any>(null);
-  const [reviewStatus, setReviewStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
-  const [reviewMessage, setReviewMessage] = useState('');
-  const [selectedFileForDiff, setSelectedFileForDiff] = useState<string | null>(null);
+  useEffect(() => {
+    if (!id || !pullNumber || !prDiff) return;
+
+    let mounted = true;
+    setIsModelLoading(true);
+    setModelLoadingMessage('Loading AI models…');
+
+    projectService
+      .startPRSession(id, pullNumber, prDiff)
+      .then(() => {
+        if (mounted) setIsModelLoading(false);
+      })
+      .catch((error) => {
+        console.error('Failed to start PR review session:', error);
+        if (mounted) {
+          setModelLoadingMessage(
+            (error as Error).message || 'Failed to initialize local AI session.',
+          );
+          setIsModelLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+      projectService.stopPRSession(id, pullNumber).catch((error) => {
+        console.error('Failed to stop PR review session:', error);
+      });
+    };
+  }, [id, pullNumber, prDiff]);
+
+  useSocketEffect({
+    onModelProgress: useCallback(
+      (data: { projectId?: string; pullNumber?: number; message?: string }) => {
+        if (data.projectId && id && data.projectId !== id) return;
+        if (data.pullNumber !== undefined && data.pullNumber !== pullNumber) return;
+        if (data.message) {
+          setModelLoadingMessage(data.message);
+        }
+      },
+      [id, pullNumber],
+    ),
+  });
 
   const {
     messages,
@@ -101,44 +137,57 @@ export function PRReview() {
     pr?.user?.login,
     pr?.additions,
     pr?.deletions,
-    pr?.changed_files
+    pr?.changed_files,
   );
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // Listen for socket events
   useSocketEffect({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onReviewProgress: useCallback((data: any) => {
-      if (data.projectId && id && data.projectId !== id) return;
-      if (data.status === 'running') {
-        setReviewStatus('running');
-        setReviewMessage(data.message || 'Generating review...');
-      } else if (data.status === 'success') {
-        setReviewStatus('success');
-        setReview(data.review);
-        setReviewMessage('');
-        setActiveTab('ai_review');
-        // Add system message to chat once review is ready
-        setMessages((prev) => {
-          if (prev.some((m) => m.role === 'system' && m.content.includes('Review complete'))) return prev;
-          return [
-            ...prev,
-            {
-              id: Date.now(),
-              role: 'system',
-              content: `✅ Review complete. Found ${data.review?.issues?.length ?? 0} issue(s). Ask me anything about this PR.`,
-            },
-          ];
-        });
-      } else if (data.status === 'error') {
-        setReviewStatus('error');
-        setReviewMessage(data.message || 'Review generation failed.');
-      }
-    }, [id, setMessages]),
+    onReviewProgress: useCallback(
+      (data: any) => {
+        if (data.projectId && id && data.projectId !== id) return;
+
+        if (data.status === 'running') {
+          setReviewStatus('running');
+          setReviewMessage(data.message || 'Reviewing pull request…');
+          return;
+        }
+
+        if (data.status === 'success') {
+          setReviewStatus('success');
+          setReview(data.review);
+          setReviewMessage('');
+          setActiveTab('ai_review');
+
+          setMessages((prev) => {
+            const alreadyAdded = prev.some(
+              (message) =>
+                message.role === 'system' &&
+                message.content.includes('Review complete'),
+            );
+
+            if (alreadyAdded) return prev;
+
+            return [
+              ...prev,
+              {
+                id: Date.now(),
+                role: 'system',
+                content: `Review complete · ${data.review?.issues?.length ?? 0} finding(s).`,
+              },
+            ];
+          });
+
+          return;
+        }
+
+        if (data.status === 'error') {
+          setReviewStatus('error');
+          setReviewMessage(data.message || 'Review generation failed.');
+        }
+      },
+      [id, setMessages],
+    ),
   });
 
-  // Fetch existing review on mount
   const { data: initialReviewState } = useQuery({
     queryKey: ['review-state', id, pullNumber],
     queryFn: () => projectService.getReview(id as string, pullNumber),
@@ -146,15 +195,22 @@ export function PRReview() {
   });
 
   useEffect(() => {
-    if (initialReviewState) {
-      setReviewStatus(initialReviewState.status);
-      if (initialReviewState.review) setReview(initialReviewState.review);
-      if (initialReviewState.message) setReviewMessage(initialReviewState.message);
+    if (!initialReviewState) return;
+
+    setReviewStatus(initialReviewState.status);
+
+    if (initialReviewState.review) {
+      setReview(initialReviewState.review);
+    }
+
+    if (initialReviewState.message) {
+      setReviewMessage(initialReviewState.message);
     }
   }, [initialReviewState]);
 
   const changedFiles = useMemo(() => {
     if (!prDiff) return [];
+
     return prDiff
       .split('\n')
       .filter((line: string) => line.startsWith('+++ b/'))
@@ -166,10 +222,16 @@ export function PRReview() {
     setActiveTab('files');
   }, []);
 
-  const handleInitializeReview = async (reviewBody: string, event: string) => {
-    if (!prDiff || !pr || !id) return console.log("Could not find the pull request");
+  const handleInitializeReview = async () => {
+    if (!prDiff || !pr || !id) {
+      setReviewStatus('error');
+      setReviewMessage('Pull request data is not ready yet.');
+      return;
+    }
+
     setReviewStatus('running');
-    setReviewMessage('🔍 Starting review...');
+    setReviewMessage('Starting review…');
+
     projectService
       .generateReview(id, {
         prDiff,
@@ -177,75 +239,60 @@ export function PRReview() {
         prBody: pr.body || '',
         prNumber: pr.number,
       })
-      .catch((err: unknown) => {
+      .catch((error: unknown) => {
         setReviewStatus('error');
-        setReviewMessage((err as Error).message || 'Review failed to start');
+        setReviewMessage(
+          (error as Error).message || 'Review failed to start.',
+        );
       });
   };
 
-
-  // Scroll chat to bottom on new messages
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Add initial system context message when PR data is ready
   useEffect(() => {
-    if (pr && repo && messages.length === 0) {
-      addSystemMessage(`Context loaded: PR #${pr.number} "${pr.title}" — ${commits.length} commit(s). AI review is generating...`);
-    }
-  }, [pr, repo, messages.length, addSystemMessage, commits.length]);
+    if (!pr || !repo || messages.length > 0) return;
+
+    const fileCount = pr.changed_files ?? changedFiles.length;
+
+    addSystemMessage(
+      `PR #${pr.number} loaded · ${commits.length} commit${commits.length === 1 ? '' : 's'} · ${fileCount} file${fileCount === 1 ? '' : 's'} changed.`,
+    );
+  }, [
+    pr,
+    repo,
+    messages.length,
+    addSystemMessage,
+    commits.length,
+    changedFiles.length,
+  ]);
 
   if (isLoadingRepo || isLoadingPrs) {
     return (
-      <div className="p-8 flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading PR...
+      <div className="flex h-[calc(100vh-64px)] items-center justify-center bg-background">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Loading pull request…
+        </div>
       </div>
     );
   }
+
   if (!repo || !pr) {
-    return <div className="p-8 text-muted-foreground">Repository or PR not found.</div>;
+    return (
+      <div className="flex h-[calc(100vh-64px)] items-center justify-center bg-background">
+        <div className="rounded-md border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
+          Pull request not found.
+        </div>
+      </div>
+    );
   }
-
-  const handleConfirmAction = async (actionType: 'request_changes' | 'approve') => {
-    const event = actionType === 'request_changes' ? 'REQUEST_CHANGES' : 'APPROVE';
-    const reviewBody = review?.summary || 'Review submitted via Cactus Review.';
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        role: 'system',
-        content: `Executing POST /repos/${owner}/${repoName}/pulls/${pr.number}/reviews (event: ${event})...`,
-      },
-    ]);
-
-    try {
-      await githubService.submitPRReview(owner, repoName, pr.number, reviewBody, event as 'REQUEST_CHANGES' | 'APPROVE');
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: `✅ Successfully submitted "${event.replace('_', ' ')}" review to GitHub.`,
-        },
-      ]);
-    } catch (err: unknown) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          role: 'system',
-          content: `⚠️ GitHub API error: ${(err as Error).message}`,
-        },
-      ]);
-    }
-  };
 
   const issueCount = review?.issues?.length ?? 0;
 
   return (
-    <div className="flex-1 flex flex-col bg-background h-[calc(100vh-64px)] overflow-hidden relative">
+    <div className="relative flex h-[calc(100vh-64px)] flex-1 flex-col overflow-hidden bg-background">
       <PRReviewHeader
         repo={repo}
         pr={pr}
@@ -254,23 +301,30 @@ export function PRReview() {
         issueCount={issueCount}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        handleConfirmAction={handleConfirmAction}
       />
 
       {isModelLoading && (
-        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-lg font-medium text-foreground">Loading AI Models...</p>
-          <p className="text-sm text-muted-foreground text-center max-w-sm">
-            Models run locally for privacy and security. This may take a moment depending on your hardware.
-          </p>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/75 backdrop-blur-[1px]">
+          <div className="flex min-w-[280px] items-center gap-3 rounded-md border border-border bg-card px-4 py-3 shadow-lg">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+
+            <div>
+              <p className="text-xs font-medium text-foreground">
+                Starting local AI
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {modelLoadingMessage}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Split Screen */}
-      <ResizablePanelGroup orientation="horizontal" className="flex-1 w-full overflow-hidden">
-        {/* Left: Chat */}
-        <ResizablePanel defaultSize={30}>
+      <ResizablePanelGroup
+        orientation="horizontal"
+        className="flex-1 w-full overflow-hidden"
+      >
+        <ResizablePanel defaultSize={32} minSize={24}>
           <AIChatSidebar
             messages={messages}
             setMessages={setMessages}
@@ -281,19 +335,23 @@ export function PRReview() {
             reviewStatus={reviewStatus}
             reviewMessage={reviewMessage}
             chatEndRef={chatEndRef}
-            handleConfirmAction={handleConfirmAction}
             changedFiles={changedFiles}
             onFileClick={handleFileClick}
           />
         </ResizablePanel>
 
-        <ResizableHandle withHandle className="bg-border" />
+        <ResizableHandle className="bg-border/80" />
 
-        {/* Right: Tab Content */}
-        <ResizablePanel defaultSize={65}>
+        <ResizablePanel defaultSize={68} minSize={42}>
           <Visibility visible={activeTab === 'pr_summary'}>
-            <PRSummaryTab pr={pr} review={review} reviewStatus={reviewStatus} reviewMessage={reviewMessage} />
+            <PRSummaryTab
+              pr={pr}
+              review={review}
+              reviewStatus={reviewStatus}
+              reviewMessage={reviewMessage}
+            />
           </Visibility>
+
           <Visibility visible={activeTab === 'ai_review'}>
             <AIReviewTab
               setActiveTab={setActiveTab}
@@ -304,8 +362,14 @@ export function PRReview() {
               onInitializeReview={handleInitializeReview}
             />
           </Visibility>
+
           <Visibility visible={activeTab === 'files'}>
-            <FilesChangedTab diff={prDiff} isLoading={isLoadingDiff} selectedFileForDiff={selectedFileForDiff} />
+            <FilesChangedTab
+              diff={prDiff}
+              isLoading={isLoadingDiff}
+              selectedFileForDiff={selectedFileForDiff}
+              onDiffScrolled={() => setSelectedFileForDiff(null)}
+            />
           </Visibility>
         </ResizablePanel>
       </ResizablePanelGroup>

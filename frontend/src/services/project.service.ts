@@ -73,6 +73,26 @@ export const projectService = {
     }
   },
 
+  async startPRSession(id: string, pullNumber: number, prDiff: string) {
+    try {
+      const res = await http.post(`/projects/${id}/review/${pullNumber}/session/start`, {
+        prDiff,
+      });
+      return res.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || 'Failed to start PR review session');
+    }
+  },
+
+  async stopPRSession(id: string, pullNumber: number) {
+    try {
+      const res = await http.post(`/projects/${id}/review/${pullNumber}/session/stop`);
+      return res.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || 'Failed to stop PR review session');
+    }
+  },
+
   async getReview(id: string, prNumber: number) {
     try {
       const res = await http.get(`/projects/${id}/review/${prNumber}`);
