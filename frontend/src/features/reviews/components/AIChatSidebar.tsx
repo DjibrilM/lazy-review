@@ -170,7 +170,7 @@ function AnimatedThought({
         <div className="min-h-0 overflow-hidden">
           <div
             ref={scrollRef}
-            className="max-h-72 overflow-y-auto border-t border-border/50 px-2.5 py-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap"
+            className="overflow-y-auto border-t border-border/50 px-2.5 py-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap"
           >
             {content}
           </div>
@@ -234,7 +234,12 @@ function AgentConfirmationRequest({
       </div>
 
       <div className="px-3 py-2.5 text-xs leading-5 text-foreground/90 [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:my-1 [&_pre]:text-[11px]">
-        <MarkdownRenderer content={msg.agentConfirmationData.question} />
+        <div className="whitespace-pre-wrap text-[11px] leading-4 text-foreground/80">
+          {msg.agentConfirmationData.action.title}
+          {msg.agentConfirmationData.action.description
+            ? `\n\n${msg.agentConfirmationData.action.description}`
+            : ''}
+        </div>
       </div>
 
       <div className="flex gap-2 border-t border-border/60 bg-muted/15 px-3 py-2">

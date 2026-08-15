@@ -147,6 +147,7 @@ export const projectService = {
       deletions?: number;
       changed_files?: number;
       creator?: string;
+      socketId?: string;
     },
     onChunk: (chunk: string) => void,
   ): Promise<void> {

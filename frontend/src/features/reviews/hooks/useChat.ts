@@ -2,13 +2,14 @@ import { useState, useRef } from 'react';
 import { projectService } from '@/services/project.service';
 
 import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
+import type { AgentConfirmationRequest } from '@/components/providers/SocketProvider';
 
 export interface ChatMessage {
   id: number;
   role: 'user' | 'assistant' | 'system';
   content: string;
   requiresConfirmation?: 'request_changes' | 'approve' | 'agent_confirmation';
-  agentConfirmationData?: { id: string; question: string };
+  agentConfirmationData?: AgentConfirmationRequest;
 }
 
 export function useChat(
@@ -28,7 +29,7 @@ export function useChat(
   const chatHistoryRef = useRef<{ role: string; content: string }[]>([]);
 
   useSocketEffect({
-    onAgentConfirmation: (data: { id: string; question: string }) => {
+    onAgentConfirmation: (data: AgentConfirmationRequest) => {
       setMessages((prev) => [
         ...prev,
         {
@@ -65,6 +66,9 @@ export function useChat(
     setIsChatLoading(true);
 
     try {
+      // Get the active socket ID so confirmations can be bound to this client.
+      const { activeSocket } = await import('@/components/providers/SocketProvider');
+
       let fullReply = '';
       await projectService.chatStream(
         projectId,
@@ -79,6 +83,7 @@ export function useChat(
           additions,
           deletions,
           changed_files: changedFiles,
+          socketId: activeSocket?.id,
         },
         (chunk) => {
           fullReply += chunk;

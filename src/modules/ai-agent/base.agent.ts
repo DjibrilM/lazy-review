@@ -7,12 +7,25 @@ import SettingsEntity from '../server/entities/settings.entity.js';
 const REVIEW_TIMEOUT_MS = 600_000; // 10 min for CPU inference
 
 export abstract class BaseAgent {
+  /** Cache loaded model IDs to avoid re-loading on every request */
+  private static cachedModelIds: { llmId: string; embeddingId: string } | null = null;
+
   constructor(protected mainModule: MainModule) {}
 
   protected async ensureModelsLoaded(): Promise<{ llmId: string; embeddingId: string }> {
+    // Return cached IDs if available - loading models is expensive
+    if (BaseAgent.cachedModelIds) {
+      return BaseAgent.cachedModelIds;
+    }
+
     const settingsRepo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
-    const settings = await settingsRepo.findOneBy({ id: 1 });
-    const deviceConfig = settings?.useExperimentalGpu ? undefined : 'cpu';
+    let settings = await settingsRepo.findOneBy({ id: 1 });
+    if (!settings) {
+      settings = settingsRepo.create({ id: 1, useExperimentalGpu: false });
+      await settingsRepo.save(settings);
+    }
+    const useGpu = Boolean(settings.useExperimentalGpu);
+    const deviceConfig = useGpu ? undefined : 'cpu';
 
     const LLM_CTX_SIZE = 128000;
     let llmId: string = (qvacModels as any)[LLM_MODEL_ID]?.modelId ?? LLM_MODEL_ID;
@@ -59,7 +72,8 @@ export abstract class BaseAgent {
       }
     }
 
-    return { llmId, embeddingId };
+    BaseAgent.cachedModelIds = { llmId, embeddingId };
+    return BaseAgent.cachedModelIds;
   }
 
   protected awaitCompletion(run: { requestId: string; final: Promise<any> }): Promise<any> {
@@ -102,6 +116,10 @@ export abstract class BaseAgent {
     await this.ensureModelsLoaded();
   }
 
+  async loadModelsWithIds(): Promise<{ llmId: string; embeddingId: string }> {
+    return this.ensureModelsLoaded();
+  }
+
   async unloadModels(): Promise<void> {
     const llmId: string = (qvacModels as any)[LLM_MODEL_ID]?.modelId ?? LLM_MODEL_ID;
     const embeddingId: string =
@@ -118,5 +136,8 @@ export abstract class BaseAgent {
     } catch (e) {
       console.warn(`Failed to unload embedding model:`, e);
     }
+
+    // Clear the cache so models get re-loaded next time
+    BaseAgent.cachedModelIds = null;
   }
 }

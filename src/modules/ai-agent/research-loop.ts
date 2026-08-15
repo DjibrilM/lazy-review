@@ -1,12 +1,133 @@
 import { completion } from '@qvac/sdk';
-import * as path from 'path';
 import * as fs from 'fs/promises';
+import { z } from 'zod';
+
 import { createGitTools } from './tools/git-tools.js';
 import { createFsTools } from './tools/fs-tools.js';
 import { extractJson } from './ai-agent.utils.js';
 import { AgentContextManager } from './agent-context-manager.js';
 import ProjectEntity from '../server/entities/project.entity.js';
-import { z } from 'zod';
+
+interface ParsedToolCall {
+  name: string;
+  arguments: unknown;
+}
+
+interface ToolExecutionResult {
+  name: string;
+  args: Record<string, any>;
+  toolResult: any;
+}
+
+const finishResearchSchema = z.object({
+  coverage: z.object({
+    entryPoints: z.boolean(),
+    runtimeArchitecture: z.boolean(),
+    moduleRelationships: z.boolean(),
+    primaryDataFlows: z.boolean(),
+    persistence: z.boolean(),
+    communication: z.boolean(),
+    configuration: z.boolean(),
+  }),
+  remainingUnknowns: z.array(z.string()).default([]),
+});
+
+type ResearchCoverage = z.infer<typeof finishResearchSchema>['coverage'];
+
+const REQUIRED_COVERAGE: Array<keyof ResearchCoverage> = [
+  'entryPoints',
+  'runtimeArchitecture',
+  'moduleRelationships',
+  'primaryDataFlows',
+  'persistence',
+  'communication',
+  'configuration',
+];
+
+function normalizeToolArguments(input: unknown): Record<string, any> {
+  if (!input) return {};
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input);
+
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof input === 'object' && !Array.isArray(input)) {
+    return input as Record<string, any>;
+  }
+
+  return {};
+}
+
+function parseFallbackToolCalls(rawText: string): ParsedToolCall[] {
+  const calls: ParsedToolCall[] = [];
+
+  try {
+    const jsonRegex = /\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}/g;
+
+    let match: RegExpExecArray | null;
+
+    while ((match = jsonRegex.exec(rawText)) !== null) {
+      try {
+        const parsed = JSON.parse(match[0]);
+
+        if (parsed.name && parsed.arguments !== undefined) {
+          calls.push({
+            name: parsed.name,
+            arguments: parsed.arguments,
+          });
+        } else if (parsed.name && parsed.args !== undefined) {
+          calls.push({
+            name: parsed.name,
+            arguments: parsed.args,
+          });
+        }
+      } catch {
+        // Ignore malformed JSON fragments.
+      }
+    }
+
+    const toolCallRegex = /<\|tool_call\|>?:?call:([a-zA-Z0-9_-]+)\{(.*?)\}/g;
+
+    let toolMatch: RegExpExecArray | null;
+
+    while ((toolMatch = toolCallRegex.exec(rawText)) !== null) {
+      try {
+        const body = toolMatch[2]?.trim();
+        const args = body ? JSON.parse(`{${body}}`) : {};
+
+        calls.push({
+          name: toolMatch[1] || '',
+          arguments: args,
+        });
+      } catch {
+        try {
+          calls.push({
+            name: toolMatch[1] || '',
+            arguments: JSON.parse(toolMatch[2] || '{}'),
+          });
+        } catch {
+          // Ignore malformed tool-call syntax.
+        }
+      }
+    }
+  } catch {
+    // Fall back to no tool calls.
+  }
+
+  return calls;
+}
+
+function getMissingCoverage(coverage: ResearchCoverage): Array<keyof ResearchCoverage> {
+  return REQUIRED_COVERAGE.filter((key) => coverage[key] !== true);
+}
 
 export async function runResearchAgentLoop(
   project: ProjectEntity,
@@ -16,94 +137,303 @@ export async function runResearchAgentLoop(
   progress: (msg: string) => void,
   checkCancelled: () => void,
   awaitCompletion: (run: any) => Promise<any>,
-  embedAndSaveFact: (...args: any[]) => any,
 ) {
   const gitTools = createGitTools(absoluteRoot);
   const fsTools = createFsTools(absoluteRoot);
 
-  // Filter out duplicate read_file from gitTools in favor of fsTools
-  const filteredGitTools = gitTools.filter((t: any) => t.name !== 'read_file');
+  // Prefer the filesystem implementation of read_file.
+  const filteredGitTools = gitTools.filter((tool: any) => tool.name !== 'read_file');
 
   const finishTool = {
     name: 'finish_research',
+
     description:
-      'Call this tool when you have gathered enough information and are ready to synthesize the final architectural manifest.',
-    parameters: z.object({}),
-    handler: () => ({ action: 'finish' }),
+      'Call this only after investigating the major architectural areas of the repository. Report which areas have been covered and any remaining unknowns.',
+
+    parameters: finishResearchSchema,
+
+    handler: (args: unknown) => ({
+      action: 'finish',
+      ...finishResearchSchema.parse(args),
+    }),
   };
 
   const researchTools = [...filteredGitTools, ...fsTools, finishTool];
 
-  const MAX_ITERATIONS = 10;
-  const MAX_TOOL_CALLS = 15;
-  const MAX_SOURCE_TOKENS = 12000;
+  const MAX_ITERATIONS = 12;
+  const MAX_TOOL_CALLS = 20;
+  const MAX_SOURCE_TOKENS = 16_000;
+
   let iteration = 0;
   let toolCallsCount = 0;
   let sourceTokensUsed = 0;
   let isDone = false;
-  let manifestResultContent = '';
 
   const jsonSchema = `{
-            "project_name": "<string: exact project name>",
-            "application_type": "<string: type of application, e.g., web app, cli tool>",
-            "architecture_pattern": "<string: architectural pattern observed>",
-            "explanation": "<string: 1 short paragraph describing purpose, layers, and data flows>",
-            "tech_stack": ["<string: technology name>"],
-            "core_modules": [
-              { "path": "<string: module path>", "desc": "<string: what the module handles>", "evidence": ["<string: file path and line number>"] }
-            ],
-            "folder_structure": "<string: brief overview of key directories>",
-            "important_details": "<string: critical info about setup or dev flows>",
-            "key_conventions": [
-              "<string: coding convention observed>"
-            ],
-            "required_secrets": [
-              { "key": "<string: env var key>", "description": "<string: what it is>" }
-            ]
-          }`;
+    "project_name": "<string: exact project name>",
+
+    "application_type": "<string: type of application>",
+
+    "architecture_pattern": "<string: dominant observed architecture pattern>",
+
+    "explanation": "<string: concise explanation of purpose, runtime layers, major data flows, persistence, and AI behavior>",
+
+    "tech_stack": [
+      "<string: technology directly observed in repository>"
+    ],
+
+    "core_modules": [
+      {
+        "path": "<string: module path>",
+        "desc": "<string: concise role of module>",
+        "responsibilities": [
+          "<string: responsibility>"
+        ],
+        "depends_on": [
+          "<string: important module or subsystem dependency>"
+        ],
+        "used_by": [
+          "<string: important callers or consumers>"
+        ],
+        "evidence": [
+          "<string: file path, symbol, or line reference>"
+        ]
+      }
+    ],
+
+    "folder_structure": "<string: concise description of important directories and their responsibilities>",
+
+    "important_details": "<string: important setup, build, runtime, indexing, or development details>",
+
+    "key_conventions": [
+      "<string: codebase convention directly observed>"
+    ],
+
+    "required_secrets": [
+      {
+        "key": "<string: environment variable key>",
+        "description": "<string: observed purpose>"
+      }
+    ],
+
+    "entry_points": [
+      {
+        "path": "<string: file path>",
+        "role": "<string: how this entry point starts or participates in the application>",
+        "evidence": [
+          "<string: file path, symbol, or line reference>"
+        ]
+      }
+    ],
+
+    "runtime_components": [
+      {
+        "name": "<string: runtime component such as CLI, web frontend, backend, worker, local model runtime>",
+        "responsibility": "<string: responsibility>",
+        "communicates_with": [
+          "<string: other component>"
+        ],
+        "evidence": [
+          "<string: file path or symbol>"
+        ]
+      }
+    ],
+
+    "data_flows": [
+      {
+        "name": "<string: flow name>",
+        "trigger": "<string: what starts the flow>",
+        "steps": [
+          {
+            "component": "<string: module or subsystem>",
+            "action": "<string: what happens at this step>"
+          }
+        ],
+        "evidence": [
+          "<string: file path or symbol>"
+        ]
+      }
+    ],
+
+    "communication": [
+      {
+        "mechanism": "<string: HTTP, Socket.io, IPC, CLI, events, etc.>",
+        "purpose": "<string: what this channel is used for>",
+        "important_events_or_routes": [
+          "<string: event, route, command, or message>"
+        ],
+        "evidence": [
+          "<string: file path or symbol>"
+        ]
+      }
+    ],
+
+    "persistence": [
+      {
+        "technology": "<string: persistence technology>",
+        "responsibility": "<string: what it stores or retrieves>",
+        "stores": [
+          "<string: persisted concept or entity>"
+        ],
+        "evidence": [
+          "<string: file path or symbol>"
+        ]
+      }
+    ],
+
+    "domain_concepts": [
+      {
+        "name": "<string: important domain concept>",
+        "description": "<string: meaning in this application>",
+        "related_modules": [
+          "<string: relevant module>"
+        ],
+        "evidence": [
+          "<string: file path or symbol>"
+        ]
+      }
+    ],
+
+    "architectural_invariants": [
+      {
+        "rule": "<string: architectural rule or constraint that should remain true>",
+        "reason": "<string: evidence-backed reason>",
+        "evidence": [
+          "<string: file path or symbol>"
+        ]
+      }
+    ],
+
+    "known_unknowns": [
+      "<string: architectural detail that could not be confidently established>"
+    ]
+  }`;
 
   let topLevelFiles = '';
+
   try {
-    const entries = await fs.readdir(absoluteRoot, { withFileTypes: true });
-    const filtered = entries.filter((e) => !e.name.startsWith('.') && e.name !== 'node_modules');
-    topLevelFiles = filtered
-      .map((e) => (e.isDirectory() ? `[DIR]  ${e.name}/` : `[FILE] ${e.name}`))
+    const entries = await fs.readdir(absoluteRoot, {
+      withFileTypes: true,
+    });
+
+    topLevelFiles = entries
+      .filter((entry) => !entry.name.startsWith('.') && entry.name !== 'node_modules')
+      .map((entry) => (entry.isDirectory() ? `[DIR]  ${entry.name}/` : `[FILE] ${entry.name}`))
       .join('\n');
   } catch {
     topLevelFiles = 'Could not read directory structure.';
   }
 
-  const systemPrompt = `You are an expert code reviewer exploring a repository.
-Your mission is to deeply understand this repository's architecture.
+  const systemPrompt = `
+You are an expert software architect investigating a repository.
 
-CRITICAL INSTRUCTIONS:
-1. Use your tools to investigate the codebase.
-2. Rely primarily on the provided repository tree and orientation files.
-3. Do not exhaustively read files. Prefer searching, reading outlines, or reading specific symbols.
-4. When you have enough context to describe the architecture, tech stack, and core modules, call the 'finish_research' tool.
-5. Do NOT generate the final JSON manifest in this step. Just explore.`;
+Your job is not to summarize files one by one.
+
+Your job is to build an evidence-backed mental model of how the
+application actually works.
+
+RESEARCH GOALS
+
+Before finishing, investigate:
+
+1. ENTRY POINTS
+   Determine what starts the application and where runtime initialization occurs.
+
+2. RUNTIME ARCHITECTURE
+   Identify the major runtime components, such as CLI, frontend, backend,
+   workers, databases, local AI runtimes, or other processes.
+
+3. MODULE RELATIONSHIPS
+   Determine how important modules depend on, call, or communicate with one another.
+
+4. PRIMARY DATA FLOWS
+   Trace the most important end-to-end behaviors through the application.
+   Examples include startup, indexing, user requests, AI inference,
+   persistence, synchronization, review generation, and streaming.
+
+5. PERSISTENCE
+   Determine what is persisted, where it is persisted, and which modules
+   read or write it.
+
+6. COMMUNICATION
+   Investigate HTTP routes, Socket.io events, IPC, CLI commands,
+   internal events, or other important communication boundaries.
+
+7. CONFIGURATION
+   Determine important configuration files and environment variables only
+   when they are directly evidenced by repository contents.
+
+8. DOMAIN CONCEPTS
+   Identify important application concepts represented by entities,
+   services, types, state, or workflows.
+
+9. ARCHITECTURAL INVARIANTS
+   Identify constraints future changes should preserve when those
+   constraints are supported by concrete repository evidence.
+
+EVIDENCE RULES
+
+- Prefer source-code evidence over guesses.
+- Never invent environment variables.
+- Never infer a technology merely because it is common for the stack.
+- Never claim a data flow without following enough code to support it.
+- Record exact file paths and important symbols for major conclusions.
+- Clearly preserve uncertainty.
+- If something cannot be established, add it to known unknowns.
+- Architectural patterns may be inferred, but the implementation evidence
+  supporting the inference must be understood first.
+
+RESEARCH STRATEGY
+
+- Start with entry points, package configuration, and orientation files.
+- Follow imports and calls into major subsystems.
+- Prefer search, outlines, and symbol-level inspection over entire files.
+- Follow execution across module boundaries when investigating important flows.
+- Do not repeatedly inspect the same file unless necessary.
+- Do not exhaustively read the repository.
+- Spend the research budget on architectural relationships rather than
+  collecting isolated code snippets.
+
+FINISHING
+
+The finish_research coverage booleans mean that an area has been
+investigated sufficiently to determine how it works, whether it is
+applicable, or that a remaining uncertainty has been explicitly recorded.
+
+Do not call finish_research merely because the technology stack and
+several important files are known.
+
+Do not output the final manifest during research.
+`;
 
   const contextManager = new AgentContextManager(
     systemPrompt,
     gemma4ModelId,
-    128000,
-    2500,
+    128_000,
+    2_500,
     project.id.toString(),
   );
 
   contextManager.addRecent({
     role: 'user',
-    content: `/no_think\n## Repository: ${project.name}\n\nHere is the top-level directory structure to get you started:\n${topLevelFiles}\n\nOrientation file contents found:\n${orientationFileContents.join('\n')}\n\nExplore the codebase using your tools.`,
+    content: `/no_think
+## Repository: ${project.name}
+
+## Top-level repository structure
+
+${topLevelFiles}
+
+## Orientation files
+
+${orientationFileContents.join('\n\n')}
+
+Explore the repository using your tools and build an architectural mental model.`,
   });
 
-  try {
-    const dumpPath = path.join(absoluteRoot, 'prompt_dump.txt');
-    await fs.writeFile(dumpPath, JSON.stringify(contextManager.buildHistory(), null, 2), 'utf-8');
-  } catch (err: any) {
-    console.warn(`Failed to write prompt dump to ${absoluteRoot}:`, err.message);
-  }
+  // ─────────────────────────────────────────────
+  // PHASE 1: RESEARCH
+  // ─────────────────────────────────────────────
 
-  // PHASE: RESEARCH
   while (
     !isDone &&
     iteration < MAX_ITERATIONS &&
@@ -115,7 +445,9 @@ CRITICAL INSTRUCTIONS:
 
     const budget = {
       iterationsRemaining: MAX_ITERATIONS - iteration,
+
       toolCallsRemaining: MAX_TOOL_CALLS - toolCallsCount,
+
       sourceTokensRemaining: MAX_SOURCE_TOKENS - sourceTokensUsed,
     };
 
@@ -123,230 +455,385 @@ CRITICAL INSTRUCTIONS:
       await contextManager.compactWithLLM(progress);
     }
 
-    const history = contextManager.buildHistory(budget);
-
     const researchRun = completion({
       modelId: gemma4ModelId,
-      history,
+      history: contextManager.buildHistory(budget),
       tools: researchTools as any,
       toolDialect: 'json',
       stream: false,
       maxTokens: 2048,
       kvCache: project.id.toString(),
     });
+
     const researchResult = await awaitCompletion(researchRun);
+
     checkCancelled();
 
     const rawText = researchResult.raw?.fullText || researchResult.contentText || '';
-    let parsedToolCalls: any[] = [];
+
+    let parsedToolCalls: ParsedToolCall[] = [];
 
     const resolvedToolCalls = await researchResult.toolCalls;
+
     if (resolvedToolCalls && resolvedToolCalls.length > 0) {
-      parsedToolCalls = resolvedToolCalls.map((tc: any) => ({
-        name: tc.name || tc.function?.name,
-        arguments: tc.arguments || tc.function?.arguments || tc.args,
+      parsedToolCalls = resolvedToolCalls.map((toolCall: any) => ({
+        name: toolCall.name || toolCall.function?.name || '',
+
+        arguments: toolCall.arguments || toolCall.function?.arguments || toolCall.args || {},
       }));
     } else {
-      try {
-        const regex = /\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}/g;
-        let match;
-        while ((match = regex.exec(rawText)) !== null) {
-          try {
-            const parsed = JSON.parse(match[0]);
-            if (parsed.name && parsed.arguments) {
-              parsedToolCalls.push({ name: parsed.name, arguments: parsed.arguments });
-            } else if (parsed.name && parsed.args) {
-              parsedToolCalls.push({ name: parsed.name, arguments: parsed.args });
-            }
-          } catch {
-            // ignore
-          }
-        }
-
-        const agRegex = /<\|tool_call\|>?:?call:([a-zA-Z0-9_-]+)\{(.*?)\}/g;
-        let agMatch;
-        while ((agMatch = agRegex.exec(rawText)) !== null) {
-          try {
-            let parsedArgs = {};
-            if (agMatch[2] && agMatch[2].trim()) {
-              parsedArgs = JSON.parse('{' + agMatch[2] + '}');
-            }
-            parsedToolCalls.push({ name: agMatch[1] || '', arguments: parsedArgs });
-          } catch {
-            try {
-              const parsedArgs = JSON.parse(agMatch[2] || '{}');
-              parsedToolCalls.push({ name: agMatch[1] || '', arguments: parsedArgs });
-            } catch {
-              // ignore
-            }
-          }
-        }
-      } catch {
-        // ignore
-      }
+      parsedToolCalls = parseFallbackToolCalls(rawText);
     }
 
-    if (parsedToolCalls.length > 0) {
+    if (parsedToolCalls.length === 0) {
+      if (!rawText.trim()) {
+        continue;
+      }
+
       contextManager.addRecent({
         role: 'assistant',
         content: researchResult.cacheableAssistantContent || rawText,
       });
 
-      for (const parsedToolCall of parsedToolCalls) {
-        toolCallsCount++;
-        if (parsedToolCall.name === 'finish_research' || parsedToolCall.name === 'finish') {
-          isDone = true;
-          break;
-        }
+      if (rawText.includes('<execute_tool>')) {
+        contextManager.addRecent({
+          role: 'user',
+          content: `/no_think
+CRITICAL ERROR: <execute_tool> is not a supported tool-call format.
 
-        const tool = researchTools.find((t: any) => t.name === parsedToolCall.name);
-        if (tool) {
-          let args = parsedToolCall.arguments;
-          if (typeof args === 'string') {
-            try {
-              args = JSON.parse(args);
-            } catch {
-              // ignore
-            }
-          }
-          args = args || {};
+Use the configured JSON tool calling format.
 
-          if (parsedToolCall.name === 'read_file') {
-            const filePath = args.filePath || args.file_path;
-            if (contextManager.hasInspected(filePath) && !args.force) {
-              const warningMsg = `Warning: You have already inspected this file. Repeated inspections waste context window. If you really need to re-read it, pass { "force": true } in your arguments.`;
+Example:
+{"name":"read_file","arguments":{"filePath":"src/index.ts"}}`,
+        });
+      } else {
+        contextManager.addRecent({
+          role: 'user',
+          content: `/no_think
+Continue researching with a tool call.
 
-              contextManager.addRecent({
-                role: 'tool',
-                content: JSON.stringify({ error: warningMsg, alreadyInspected: true }),
-              });
-              continue;
-            }
-          }
+If the architectural research goals have all been investigated, call
+finish_research with the required coverage object.
 
-          let toolMsg = `🔧 Using tool: ${parsedToolCall.name}`;
-          if (parsedToolCall.name === 'read_file' && args.file_path) {
-            toolMsg = `📂 Reading file: ${args.file_path}`;
-          } else if (parsedToolCall.name === 'search_in_files' && args.keyword) {
-            toolMsg = `🔎 Searching codebase for: "${args.keyword}"`;
-          }
-          console.log(`\n[AI Tool Execution] ${toolMsg}`);
+Do not respond with a prose summary yet.`,
+        });
+      }
 
-          checkCancelled();
-          let toolResult;
-          try {
-            if ('invoke' in tool && typeof (tool as any).invoke === 'function') {
-              toolResult = await (tool as any).invoke(args);
-            } else if ('handler' in tool && typeof (tool as any).handler === 'function') {
-              toolResult = await (tool as any).handler(args);
-            }
-          } catch (err: any) {
-            toolResult = { error: err.message };
-            console.error(`\n[AI Tool Error] ${err.message}`);
-          }
+      continue;
+    }
 
-          console.log(
-            `[AI Tool Result] Returned payload of ${Buffer.byteLength(JSON.stringify(toolResult) || '', 'utf8')} bytes\n`,
-          );
+    contextManager.addRecent({
+      role: 'assistant',
+      content: researchResult.cacheableAssistantContent || rawText,
+    });
 
-          const estimatedToolTokens = contextManager.estimateTokens(toolResult);
-          sourceTokensUsed += estimatedToolTokens;
+    const executableCalls: Array<{
+      name: string;
+      args: Record<string, any>;
+    }> = [];
 
-          if (contextManager.needsCompaction(estimatedToolTokens, budget)) {
-            await contextManager.compactWithLLM(progress);
-          }
+    for (const toolCall of parsedToolCalls) {
+      if (toolCallsCount >= MAX_TOOL_CALLS) {
+        break;
+      }
 
+      toolCallsCount++;
+
+      const args = normalizeToolArguments(toolCall.arguments);
+
+      if (toolCall.name === 'finish_research' || toolCall.name === 'finish') {
+        const finishResult = finishResearchSchema.safeParse(args);
+
+        if (!finishResult.success) {
           contextManager.addRecent({
             role: 'tool',
-            content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+            content: JSON.stringify({
+              error:
+                'finish_research requires the complete coverage object and remainingUnknowns array.',
+              details: finishResult.error.flatten(),
+            }),
           });
 
-          if (
-            parsedToolCall.name === 'read_file' &&
-            toolResult &&
-            !toolResult.error &&
-            (typeof toolResult === 'string' || typeof toolResult.content === 'string')
-          ) {
-            const filePath = args.filePath || args.file_path;
-            const contentToEmbed = typeof toolResult === 'string' ? toolResult : toolResult.content;
+          continue;
+        }
 
-            contextManager.markFileInspected(filePath, 'General codebase exploration', []);
+        const missingCoverage = getMissingCoverage(finishResult.data.coverage);
 
-            try {
-              embedAndSaveFact(contentToEmbed, filePath, {
-                source: 'discovered_file',
-                version: project.indexing_version,
-              });
-            } catch {
-              // ignore
-            }
-          }
+        if (missingCoverage.length > 0) {
+          contextManager.addRecent({
+            role: 'tool',
+            content: JSON.stringify({
+              action: 'continue_research',
+              error: 'Research coverage is incomplete.',
+              missingCoverage,
+              instruction:
+                'Investigate these areas before finishing. If an area is genuinely unknown after investigation, record the uncertainty in remainingUnknowns and mark the area covered.',
+            }),
+          });
+
+          continue;
+        }
+
+        if (finishResult.data.remainingUnknowns.length > 0) {
+          contextManager.addRecent({
+            role: 'tool',
+            content: JSON.stringify({
+              action: 'finish',
+              remainingUnknowns: finishResult.data.remainingUnknowns,
+            }),
+          });
+        }
+
+        isDone = true;
+        break;
+      }
+
+      if (toolCall.name === 'read_file') {
+        const filePath = args.filePath || args.file_path;
+
+        if (filePath && contextManager.hasInspected(filePath) && !args.force) {
+          contextManager.addRecent({
+            role: 'tool',
+            content: JSON.stringify({
+              error: 'This file has already been inspected. Re-reading it wastes research context.',
+              alreadyInspected: true,
+              filePath,
+              instruction:
+                'Use search or inspect another related module. Pass force=true only if re-reading this file is necessary.',
+            }),
+          });
+
+          continue;
         }
       }
-    } else {
-      if (rawText.trim().length > 0) {
-        contextManager.addRecent({
-          role: 'assistant',
-          content: researchResult.cacheableAssistantContent || rawText,
-        });
-        if (rawText.includes('<execute_tool>')) {
-          contextManager.addRecent({
-            role: 'user',
-            content: `/no_think\nCRITICAL ERROR: You used <execute_tool>. This format is STRICTLY FORBIDDEN. You must output ONLY a JSON object to use a tool. Example: {"name": "read_file", "arguments": {"filePath": "src/index.ts"}}`,
-          });
-        } else {
-          contextManager.addRecent({
-            role: 'user',
-            content: `/no_think\nYou outputted text instead of making a tool call. You MUST use a tool to continue investigating, or call the 'finish_research' tool if you are done.`,
-          });
+
+      executableCalls.push({
+        name: toolCall.name,
+        args,
+      });
+    }
+
+    if (isDone) {
+      break;
+    }
+
+    if (executableCalls.length === 0) {
+      continue;
+    }
+
+    // Research tools are read-only, so independent calls may execute
+    // concurrently.
+    const toolExecutionResults: ToolExecutionResult[] = await Promise.all(
+      executableCalls.map(async ({ name, args }): Promise<ToolExecutionResult> => {
+        const tool = researchTools.find((candidate: any) => candidate.name === name);
+
+        if (!tool) {
+          return {
+            name,
+            args,
+            toolResult: {
+              error: `Unknown tool: ${name}`,
+            },
+          };
         }
-      } else {
-        // text is empty
+
+        let toolMessage = `🔧 Using tool: ${name}`;
+
+        if (name === 'read_file' && (args.file_path || args.filePath)) {
+          toolMessage = `📂 Reading file: ${args.file_path || args.filePath}`;
+        } else if (name === 'search_in_files' && args.keyword) {
+          toolMessage = `🔎 Searching codebase for: "${args.keyword}"`;
+        }
+
+        console.log(`\n[AI Tool Execution] ${toolMessage}`);
+
+        checkCancelled();
+
+        try {
+          let toolResult: any;
+
+          if ('invoke' in tool && typeof (tool as any).invoke === 'function') {
+            toolResult = await (tool as any).invoke(args);
+          } else if ('handler' in tool && typeof (tool as any).handler === 'function') {
+            toolResult = await (tool as any).handler(args);
+          } else {
+            toolResult = {
+              error: 'Tool has no executable handler.',
+            };
+          }
+
+          return {
+            name,
+            args,
+            toolResult,
+          };
+        } catch (error: any) {
+          console.error(`\n[AI Tool Error] ${error.message}`);
+
+          return {
+            name,
+            args,
+            toolResult: {
+              error: error.message,
+            },
+          };
+        }
+      }),
+    );
+
+    for (const { name, args, toolResult } of toolExecutionResults) {
+      console.log(
+        `[AI Tool Result] Returned payload of ${Buffer.byteLength(
+          JSON.stringify(toolResult) || '',
+          'utf8',
+        )} bytes\n`,
+      );
+
+      const estimatedToolTokens = contextManager.estimateTokens(toolResult);
+
+      sourceTokensUsed += estimatedToolTokens;
+
+      if (
+        contextManager.needsCompaction(estimatedToolTokens, {
+          iterationsRemaining: MAX_ITERATIONS - iteration,
+
+          toolCallsRemaining: MAX_TOOL_CALLS - toolCallsCount,
+
+          sourceTokensRemaining: MAX_SOURCE_TOKENS - sourceTokensUsed,
+        })
+      ) {
+        await contextManager.compactWithLLM(progress);
+      }
+
+      contextManager.addRecent({
+        role: 'tool',
+        content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+      });
+
+      // Research records what has already been inspected,
+      // but it does NOT modify the vector database.
+      if (name === 'read_file' && toolResult && !toolResult.error) {
+        const filePath = args.filePath || args.file_path;
+
+        if (filePath) {
+          contextManager.markFileInspected(filePath, 'Architecture research', []);
+        }
       }
     }
   }
 
-  // PHASE: SYNTHESIS
+  // ─────────────────────────────────────────────
+  // PHASE 2: SYNTHESIS
+  // ─────────────────────────────────────────────
+
+  checkCancelled();
 
   contextManager.addRecent({
     role: 'user',
-    content: `/no_think\nThe research phase is complete. Based on the Research Memory and State, output the final JSON manifest strictly following this schema:\n\`\`\`json\n${jsonSchema}\n\`\`\`\nProvide ONLY the JSON output.`,
+    content: `/no_think
+The repository research phase is complete.
+
+Using only information established during research and the Research Memory,
+produce the final architectural manifest.
+
+RULES:
+
+- Use direct repository evidence.
+- Do not invent technologies, secrets, routes, events, entities, or flows.
+- Keep uncertain conclusions in known_unknowns.
+- Preserve evidence for important architectural claims.
+- data_flows should describe behavior across components rather than individual functions.
+- architectural_invariants must be supported by repository behavior or configuration.
+- Keep the legacy fields application_type, architecture_pattern,
+  explanation, tech_stack, core_modules, folder_structure,
+  important_details, key_conventions, and required_secrets populated
+  because they are consumed by the existing project-summary renderer.
+
+Output strictly valid JSON matching this schema:
+
+\`\`\`json
+${jsonSchema}
+\`\`\`
+
+Provide ONLY the JSON object.`,
   });
 
   const synthesisRun = completion({
     modelId: gemma4ModelId,
     history: contextManager.buildHistory(),
     stream: true,
-    maxTokens: 16384,
+    maxTokens: 16_384,
     kvCache: project.id.toString(),
   });
 
   const synthesisResult = await awaitCompletion(synthesisRun);
-  manifestResultContent = synthesisResult.contentText || '';
 
-  let extractedFacts;
+  const manifestResultContent = synthesisResult.contentText || '';
+
   try {
-    extractedFacts = extractJson(manifestResultContent);
-    extractedFacts.project_name = extractedFacts.project_name || project.name;
-    extractedFacts.architecture_pattern = extractedFacts.architecture_pattern || 'Unknown';
-    extractedFacts.core_modules = extractedFacts.core_modules || [];
-    extractedFacts.key_conventions = extractedFacts.key_conventions || [];
-    extractedFacts.tech_stack = extractedFacts.tech_stack || [];
-    extractedFacts.application_type = extractedFacts.application_type || 'Unknown';
-    extractedFacts.required_secrets = extractedFacts.required_secrets || [];
-    extractedFacts.explanation = extractedFacts.explanation || '';
+    const extractedFacts = extractJson(manifestResultContent);
+
+    return {
+      ...extractedFacts,
+
+      project_name: extractedFacts.project_name || project.name,
+
+      application_type: extractedFacts.application_type || 'Unknown',
+
+      architecture_pattern: extractedFacts.architecture_pattern || 'Unknown',
+
+      explanation: extractedFacts.explanation || '',
+
+      tech_stack: extractedFacts.tech_stack || [],
+
+      core_modules: extractedFacts.core_modules || [],
+
+      folder_structure: extractedFacts.folder_structure || '',
+
+      important_details: extractedFacts.important_details || '',
+
+      key_conventions: extractedFacts.key_conventions || [],
+
+      required_secrets: extractedFacts.required_secrets || [],
+
+      entry_points: extractedFacts.entry_points || [],
+
+      runtime_components: extractedFacts.runtime_components || [],
+
+      data_flows: extractedFacts.data_flows || [],
+
+      communication: extractedFacts.communication || [],
+
+      persistence: extractedFacts.persistence || [],
+
+      domain_concepts: extractedFacts.domain_concepts || [],
+
+      architectural_invariants: extractedFacts.architectural_invariants || [],
+
+      known_unknowns: extractedFacts.known_unknowns || [],
+    };
   } catch {
-    extractedFacts = {
+    return {
       project_name: project.name,
-      architecture_pattern: 'Unknown (LLM Parse Error)',
-      core_modules: [],
-      key_conventions: [],
-      tech_stack: [],
       application_type: 'Unknown',
+      architecture_pattern: 'Unknown (LLM Parse Error)',
+      explanation: 'Failed to parse the architecture research output.',
+
+      tech_stack: [],
+      core_modules: [],
+      folder_structure: '',
+      important_details: '',
+      key_conventions: [],
       required_secrets: [],
-      explanation: 'Failed to parse AI output.',
+
+      entry_points: [],
+      runtime_components: [],
+      data_flows: [],
+      communication: [],
+      persistence: [],
+      domain_concepts: [],
+      architectural_invariants: [],
+      known_unknowns: ['The final research manifest could not be parsed.'],
     };
   }
-
-  return extractedFacts;
 }

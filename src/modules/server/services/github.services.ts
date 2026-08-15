@@ -73,7 +73,7 @@ class GithubServices {
     return this.githubModule.submitPRReview(args);
   }
 
-  async handleOperation(req: any, res: any) {}
+  async handleOperation(_req: any, _res: any) {}
 }
 
 export default GithubServices;

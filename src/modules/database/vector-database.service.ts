@@ -142,9 +142,97 @@ export class VectorDatabaseService {
     // Delete existing
     this.deleteFactsForFile(projectId, filePath);
 
-    // Insert new
-    for (const fact of facts) {
-      await this.saveProjectFact(projectId, fact.content, fact.embedding, filePath, fact.metadata);
-    }
+    // Insert new in a single transaction for speed
+    if (facts.length === 0) return;
+
+    const transaction = this.db.transaction(
+      (items: { content: string; embedding: number[]; metadata?: any }[]) => {
+        const insertFact = this.db.prepare(`
+        INSERT INTO project_facts (project_id, content, file_path, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `);
+
+        const insertVec = this.db.prepare(`
+        INSERT INTO vec_project_facts (fact_id, embedding)
+        VALUES (?, ?)
+      `);
+
+        for (const fact of items) {
+          const embeddingFloat32 = new Float32Array(fact.embedding);
+          const serializedEmbedding = Buffer.from(embeddingFloat32.buffer);
+
+          const result = insertFact.run(
+            projectId,
+            fact.content,
+            filePath,
+            fact.metadata ? JSON.stringify(fact.metadata) : null,
+          );
+
+          const factId = result.lastInsertRowid;
+          insertVec.run(BigInt(factId), serializedEmbedding);
+        }
+      },
+    );
+
+    transaction(facts);
+  }
+
+  /**
+   * Batch save facts across multiple files in a single transaction.
+   * Much faster than calling replaceFactsForFile repeatedly.
+   */
+  public async batchReplaceFacts(
+    projectId: string,
+    fileFacts: {
+      filePath: string;
+      facts: { content: string; embedding: number[]; metadata?: any }[];
+    }[],
+  ) {
+    const transaction = this.db.transaction((items: typeof fileFacts) => {
+      const deleteVec = this.db.prepare(`
+        DELETE FROM vec_project_facts 
+        WHERE fact_id IN (
+          SELECT id FROM project_facts WHERE project_id = ? AND file_path = ?
+        )
+      `);
+
+      const deleteFacts = this.db.prepare(`
+        DELETE FROM project_facts WHERE project_id = ? AND file_path = ?
+      `);
+
+      const insertFact = this.db.prepare(`
+        INSERT INTO project_facts (project_id, content, file_path, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `);
+
+      const insertVec = this.db.prepare(`
+        INSERT INTO vec_project_facts (fact_id, embedding)
+        VALUES (?, ?)
+      `);
+
+      for (const { filePath, facts } of items) {
+        // Delete existing facts for this file
+        deleteVec.run(projectId, filePath);
+        deleteFacts.run(projectId, filePath);
+
+        // Insert new facts
+        for (const fact of facts) {
+          const embeddingFloat32 = new Float32Array(fact.embedding);
+          const serializedEmbedding = Buffer.from(embeddingFloat32.buffer);
+
+          const result = insertFact.run(
+            projectId,
+            fact.content,
+            filePath,
+            fact.metadata ? JSON.stringify(fact.metadata) : null,
+          );
+
+          const factId = result.lastInsertRowid;
+          insertVec.run(BigInt(factId), serializedEmbedding);
+        }
+      }
+    });
+
+    transaction(fileFacts);
   }
 }
