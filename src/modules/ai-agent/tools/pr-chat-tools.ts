@@ -22,11 +22,20 @@ export function createPrChatTools(
     description: 'Get the exact diff for a specific file modified in this PR.',
     effect: 'read',
     parameters: z.object({
-      file_path: z.string().describe('The path of the changed file (e.g. src/main.ts).'),
+      file_path: z
+        .string()
+        .optional()
+        .describe('The path of the changed file (e.g. src/main.ts).'),
+      filePath: z
+        .string()
+        .optional()
+        .describe('The path of the changed file (e.g. src/main.ts). Alias for file_path.'),
     }),
-    handler: async (args: { file_path: string }) => {
-      const fileDiff = parsedDiffFiles.find((file) => file.file === args.file_path);
-      if (!fileDiff) return { error: `File ${args.file_path} not found in this PR's diff.` };
+    handler: async (args: { file_path?: string; filePath?: string }) => {
+      const filePath = args.file_path ?? args.filePath;
+      if (!filePath) return { error: 'Missing file_path or filePath argument.' };
+      const fileDiff = parsedDiffFiles.find((file) => file.file === filePath);
+      if (!fileDiff) return { error: `File ${filePath} not found in this PR's diff.` };
       return { diff: fileDiff.diff };
     },
   };
@@ -170,9 +179,7 @@ export function createPrChatTools(
           pull_number: context.githubMeta.pull_number,
           body: args.body,
           event: 'REQUEST_CHANGES',
-          comments: [
-            { path: args.file_path, line: args.line_number, body: args.comment_details },
-          ],
+          comments: [{ path: args.file_path, line: args.line_number, body: args.comment_details }],
         });
         return { result: 'Changes successfully requested on GitHub.' };
       } catch (error: any) {

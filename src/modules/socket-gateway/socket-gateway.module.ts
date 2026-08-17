@@ -63,10 +63,7 @@ export default class SocketModule {
    * Request a structured confirmation from a specific socket. The confirmation
    * is bound to the initiating socket so no other connected client can respond.
    */
-  requestConfirmation(
-    socketId: string,
-    confirmation: AgentConfirmationRequest,
-  ): Promise<boolean> {
+  requestConfirmation(socketId: string, confirmation: AgentConfirmationRequest): Promise<boolean> {
     const id = crypto.randomUUID();
 
     return new Promise<boolean>((resolve) => {

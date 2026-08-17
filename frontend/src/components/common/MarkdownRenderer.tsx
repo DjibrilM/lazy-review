@@ -2,13 +2,97 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-import { FileCode2 } from 'lucide-react';
+import { FileCode2, Copy, Check } from 'lucide-react';
+import { useState } from 'react';
 
 interface MarkdownRendererProps {
   content: string;
   changedFiles?: string[];
   onFileClick?: (fileName: string) => void;
+}
+
+/** Language from className="language-ts" → "ts" */
+function getLanguageFromClassName(className?: string): string {
+  const match = /language-([\w-]+)/.exec(className || '');
+  return match?.[1] ?? '';
+}
+
+/** Normalize common alias languages to langs supported by Prism. */
+function normalizeLanguage(lang: string): string {
+  if (!lang) return 'text';
+  const map: Record<string, string> = {
+    js: 'javascript',
+    jsx: 'jsx',
+    ts: 'typescript',
+    tsx: 'tsx',
+    py: 'python',
+    sh: 'bash',
+    shell: 'bash',
+    zsh: 'bash',
+    rb: 'ruby',
+    rs: 'rust',
+    yml: 'yaml',
+    md: 'markdown',
+    html: 'markup',
+    xml: 'markup',
+    sql: 'sql',
+    json: 'json',
+    css: 'css',
+    scss: 'scss',
+  };
+  return map[lang.toLowerCase()] ?? lang.toLowerCase();
+}
+
+function CodeBlock({ code, language }: { code: string; language: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="group relative my-4 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
+      <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+          {language || 'code'}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300"
+        >
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+
+      <SyntaxHighlighter
+        language={normalizeLanguage(language)}
+        style={oneDark}
+        customStyle={{
+          margin: 0,
+          padding: '0.75rem 1rem',
+          background: 'transparent',
+          fontSize: '0.8rem',
+          lineHeight: '1.6',
+        }}
+        codeTagProps={{
+          style: {
+            fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+            fontSize: '0.8rem',
+          },
+        }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  );
 }
 
 export const MarkdownRenderer = ({ content, changedFiles = [], onFileClick }: MarkdownRendererProps) => {
@@ -76,10 +160,25 @@ export const MarkdownRenderer = ({ content, changedFiles = [], onFileClick }: Ma
         code(props) {
           const { children, className } = props;
 
-          const isBlock = className?.includes('language-') || String(children).includes('\n');
+          // Extract plain text from React children so newline detection works
+          // even when rehypeRaw produces nested elements inside the code block.
+          // String(children) on a React element array yields "[object Object]",
+          // which never includes newlines and falsely marks block code as inline.
+          const extractText = (node: unknown): string => {
+            if (typeof node === 'string') return node;
+            if (Array.isArray(node)) return node.map(extractText).join('');
+            if (node && typeof node === 'object' && 'props' in (node as any)) {
+              return extractText((node as any).props?.children);
+            }
+            return '';
+          };
+
+          const textContent = extractText(children);
+          const language = getLanguageFromClassName(className);
+          const isBlock = language !== '' || textContent.includes('\n');
 
           if (!isBlock) {
-            const fileName = String(children).trim();
+            const fileName = String(textContent).trim();
             const isChangedFile = changedFiles.includes(fileName);
 
             if (isChangedFile && onFileClick) {
@@ -99,7 +198,7 @@ export const MarkdownRenderer = ({ content, changedFiles = [], onFileClick }: Ma
                   title="View this file in the diff"
                 >
                   <FileCode2 className="w-3.5 h-3.5" />
-                  <span className="font-mono">{children}</span>
+                  <span className="font-mono">{textContent}</span>
                 </button>
               );
             }
@@ -118,34 +217,13 @@ export const MarkdownRenderer = ({ content, changedFiles = [], onFileClick }: Ma
                   font-mono
                 "
               >
-                {children}
+                {textContent}
               </code>
             );
           }
 
-          return (
-            <pre
-              className="
-                overflow-x-auto
-                rounded-2xl
-                border
-                border-white/10
-                bg-zinc-950
-                p-4
-                my-4
-              "
-            >
-              <code
-                className="
-                  text-sm
-                  font-mono
-                  text-zinc-300
-                "
-              >
-                {children}
-              </code>
-            </pre>
-          );
+          // Block code with syntax highlighting + copy button
+          return <CodeBlock code={textContent} language={normalizeLanguage(language)} />;
         },
 
         table: ({ children }) => (

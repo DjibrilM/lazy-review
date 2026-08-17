@@ -6,38 +6,114 @@ import { createGitTools } from './tools/git-tools.js';
 import { createFsTools } from './tools/fs-tools.js';
 import { createPrChatTools } from './tools/pr-chat-tools.js';
 import type { GitHubMeta, RuntimeTool, ToolContext } from './tool-types.js';
-import { ToolExecutor, serializeToolResult } from './tool-executor.js';
+import { ToolExecutor, serializeToolResult, resolveToolName } from './tool-executor.js';
 import { AgentContextManager } from './agent-context-manager.js';
 
+interface ParsedToolCall {
+  name: string;
+  arguments: unknown;
+}
+
 /**
- * Dynamically selects a smaller tool subset based on the user's intent.
- * Small/local models deteriorate much faster as the available function set
- * grows, so we only expose what the current turn needs.
+ * Parses JSON tool calls embedded in raw model text output. Local models
+ * frequently emit tool calls as JSON text in content deltas rather than as
+ * structured toolCall events.
  */
-function selectTools(
-  userMessage: string,
-  allTools: RuntimeTool[],
-): RuntimeTool[] {
+function parseFallbackToolCalls(rawText: string): ParsedToolCall[] {
+  const calls: ParsedToolCall[] = [];
+
+  try {
+    const jsonRegex = /\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}/g;
+
+    let match: RegExpExecArray | null;
+
+    while ((match = jsonRegex.exec(rawText)) !== null) {
+      try {
+        const parsed = JSON.parse(match[0]);
+
+        if (parsed.name && parsed.arguments !== undefined) {
+          calls.push({
+            name: parsed.name,
+            arguments: parsed.arguments,
+          });
+        } else if (parsed.name && parsed.args !== undefined) {
+          calls.push({
+            name: parsed.name,
+            arguments: parsed.args,
+          });
+        }
+      } catch {
+        // Ignore malformed JSON fragments.
+      }
+    }
+
+    const toolCallRegex = /<\|tool_call\|>?:?call:([a-zA-Z0-9_-]+)\{(.*?)\}/g;
+
+    // eslint-disable-next-line no-constant-condition
+    let toolMatch: RegExpExecArray | null;
+
+    // eslint-disable-next-line no-constant-condition
+    while ((toolMatch = toolCallRegex.exec(rawText)) !== null) {
+      try {
+        const body = toolMatch[2]?.trim();
+        const args = body ? JSON.parse(`{${body}}`) : {};
+
+        calls.push({
+          name: toolMatch[1] || '',
+          arguments: args,
+        });
+      } catch {
+        try {
+          calls.push({
+            name: toolMatch[1] || '',
+            arguments: JSON.parse(toolMatch[2] || '{}'),
+          });
+        } catch {
+          // Ignore malformed tool-call syntax.
+        }
+      }
+    }
+  } catch {
+    // Fall back to no tool calls.
+  }
+
+  return calls;
+}
+
+/**
+ * Selects the tool subset exposed to the model for this turn.
+ *
+ * All read-only codebase exploration, branch inspection, and PR investigation
+ * tools are ALWAYS available so the agent can confidently navigate the cloned
+ * repository, read files, list branches, and compare implementations without
+ * the user needing to use specific keywords.
+ *
+ * Only mutation tools (leave_pr_comment, request_pr_changes) are gated behind
+ * intent detection to avoid exposing destructive actions unnecessarily.
+ */
+function selectTools(userMessage: string, allTools: RuntimeTool[]): RuntimeTool[] {
   const msg = userMessage.toLowerCase();
 
-  // Always available: core PR investigation + semantic search + file reading.
-  const coreNames = new Set([
+  // Always available: full codebase exploration + branch inspection + PR tools.
+  // The agent should be able to navigate the cloned repository, read files,
+  // list branches, and compare implementations without keyword gating.
+  const alwaysAvailable = new Set([
+    // PR investigation
     'read_pr_file_diff',
     'semantic_search',
-    'search_in_files',
+    // Codebase exploration (fs-tools)
     'read_file',
+    'read_file_lines',
     'read_directory',
     'get_directory_tree',
     'get_file_outline',
     'read_symbol',
+    'search_in_files',
+    // Git / branch inspection (git-tools)
     'get_current_branch',
     'get_recent_commits',
     'get_pr_files',
     'get_file_diff',
-  ]);
-
-  // Branch comparison tools.
-  const branchNames = new Set([
     'list_branches',
     'read_file_from_branch',
     'compare_file_between_branches',
@@ -47,16 +123,7 @@ function selectTools(
     'get_branch_status',
   ]);
 
-  const selected = new Set<string>(coreNames);
-
-  const wantsBranches =
-    msg.includes('branch') ||
-    msg.includes('main') ||
-    msg.includes('compare') ||
-    msg.includes('difference') ||
-    msg.includes('evolve') ||
-    msg.includes('history') ||
-    msg.includes('commit');
+  const selected = new Set<string>(alwaysAvailable);
 
   const wantsComment =
     msg.includes('comment') ||
@@ -72,10 +139,6 @@ function selectTools(
     msg.includes('changes on this pr') ||
     msg.includes('approve') ||
     msg.includes('reject');
-
-  if (wantsBranches) {
-    for (const name of branchNames) selected.add(name);
-  }
 
   if (wantsComment) {
     selected.add('leave_pr_comment');
@@ -198,14 +261,41 @@ export class ChatAgent extends BaseAgent {
 
     const systemPrompt = `You are Cactus Review, a code-review assistant embedded in a PR review tool.
 
-Help the user understand, investigate, and review the current pull request.
+## CRITICAL: You MUST use tools to gather information. Never describe or plan to use a tool — actually call it.
 
-Use available tools when repository or PR evidence is needed.
-Do not invent repository details when they can be inspected.
+You have access to the full cloned repository on disk. When the user asks about
+code, files, branches, diffs, or history, you MUST call the appropriate tool to
+get the actual data. Do NOT say "I would use X" or "Let me check X" — just call
+the tool and use its result.
 
-GitHub and workspace mutations are executed by the runtime and may require
-user authorization. Never claim a mutation succeeded until its tool result
-reports success.
+### Tool Usage Rules
+1. If the user asks about a file → call read_file immediately.
+2. If the user asks about branches → call list_branches immediately.
+3. If the user asks about a diff → call get_branch_diff or read_pr_file_diff immediately.
+4. If the user asks about file history → call get_file_history immediately.
+5. If the user asks to compare branches → call compare_file_between_branches or get_branch_diff immediately.
+6. If the user asks about the codebase structure → call get_directory_tree or read_directory immediately.
+7. If the user asks about a symbol → call read_symbol or search_in_files immediately.
+8. If the user asks about previous implementations → call get_file_history or read_file_from_branch immediately.
+
+Never respond with "I would need to check" or "Let me look at" — just call the tool.
+Never summarize what a tool would do — call it and report the actual result.
+
+### Available Tools
+- read_file / read_file_lines / read_directory / get_directory_tree: navigate the repository
+- get_file_outline / read_symbol: understand file structure without reading everything
+- search_in_files: find where symbols are used
+- list_branches: see all local and remote branches
+- read_file_from_branch / compare_file_between_branches: compare implementations
+- get_branch_diff / get_file_history / get_file_at_commit: understand evolution
+- get_current_branch / get_recent_commits / get_pr_files / get_file_diff: PR context
+- leave_pr_comment: post a general comment to the current PR (requires user approval)
+- request_pr_changes: submit a REQUEST_CHANGES review on the current PR (requires user approval)
+
+GitHub and workspace mutations are executed by the runtime and always require
+user approval through a confirmation dialog. NEVER claim a mutation succeeded
+until its tool result reports success. If the tool result says the action was
+rejected or failed, say so honestly.
 
 Prefer read-only investigation before proposing changes.
 
@@ -240,6 +330,7 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
     const toolContext: ToolContext = {
       projectId,
       sessionId: projectId.toString(),
+      conversation: history,
     };
 
     if (githubMeta) {
@@ -248,10 +339,6 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
 
     if (socketId) {
       toolContext.socketId = socketId;
-    }
-
-    if (history.length > 0) {
-      toolContext.conversation = history;
     }
 
     const maxToolTurns = 5;
@@ -272,46 +359,48 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         kvCache: projectId.toString(),
       });
 
+      let streamedContent = '';
       let thinkingOpen = false;
-      let bufferedContent = '';
 
       // QVAC already separates normal content, thinking, and tool calls.
-      // Never try to infer a tool call from whether a text chunk starts with "{".
+      // Never try to infer a tool call from whether a text chat starts with "{".
+      // Yield content deltas incrementally so the frontend can stream tokens
+      // to the user in real time instead of waiting for the full response.
+      //
+      // Thinking and content are wrapped in explicit markers so the frontend
+      // can separate reasoning (collapsed "Reasoning" panel) from the actual
+      // answer. Without these markers, raw thinking text mixed in with normal
+      // content corrupts markdown parsing (e.g. unclosed code fences pack
+      // the explanation and snippets into a single code block).
       for await (const event of run.events as AsyncIterable<any>) {
         switch (event.type) {
           case 'thinkingDelta': {
-            if (!thinkingOpen) {
-              thinkingOpen = true;
-              yield ' thinking';
-            }
-
             if (event.text) {
+              // Emit an opening marker before the first thinking chunk.
+              if (!thinkingOpen) {
+                thinkingOpen = true;
+                yield '<thinking>';
+              }
+              streamedContent += event.text;
               yield event.text;
             }
             break;
           }
 
           case 'contentDelta': {
+            // Close the thinking section when real content begins.
             if (thinkingOpen) {
               thinkingOpen = false;
-              yield ' response';
+              yield '</thinking>';
             }
-
             if (event.text) {
-              // Buffer content until we know whether this turn contains tool
-              // calls. If it does, we discard the preliminary prose and let the
-              // model generate the final answer after tool execution.
-              bufferedContent += event.text;
+              streamedContent += event.text;
+              yield event.text;
             }
             break;
           }
 
           case 'toolCall': {
-            if (thinkingOpen) {
-              thinkingOpen = false;
-              yield ' response';
-            }
-
             console.log(
               `🧰 [ChatAgent] Tool requested: ${event.call?.name}`,
               event.call?.arguments,
@@ -333,19 +422,41 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         }
       }
 
+      // If the stream ends while a thinking block is still open, close it.
       if (thinkingOpen) {
-        yield ' response';
+        thinkingOpen = false;
+        yield '</thinking>';
       }
 
       const result = await run.final;
       // IMPORTANT: toolCalls may be exposed asynchronously. Always await it.
-      const toolCalls = (await result.toolCalls) ?? [];
+      const structuredToolCalls = (await result.toolCalls) ?? [];
 
-      // No tool requested: the buffered content is the final answer.
+      const rawText =
+        result.cacheableAssistantContent ?? result.contentText ?? result.raw?.fullText ?? '';
+
+      // Check if the streamed/raw content is actually a JSON tool call the SDK
+      // didn't parse into structured toolCall events. Local models frequently
+      // emit tool calls as JSON text.
+      let toolCalls: any[] = structuredToolCalls;
+
       if (toolCalls.length === 0) {
-        if (bufferedContent) {
-          yield bufferedContent;
+        const parsedFallback = parseFallbackToolCalls(rawText || streamedContent);
+
+        if (parsedFallback.length > 0) {
+          console.log(
+            `🧰 [ChatAgent] Parsed ${parsedFallback.length} tool call(s) from raw text fallback`,
+          );
+          toolCalls = parsedFallback.map((call) => ({
+            name: call.name,
+            arguments: call.arguments,
+          }));
         }
+      }
+
+      // No tool requested: the streamed content is the final answer.
+      // Content was already yielded incrementally above, so just return.
+      if (toolCalls.length === 0) {
         return;
       }
 
@@ -354,20 +465,29 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
       // follow-up completion can reason from the tool results correctly.
       contextManager.addRecent({
         role: 'assistant',
-        content:
-          result.cacheableAssistantContent ?? result.contentText ?? result.raw?.fullText ?? '',
+        content: rawText || streamedContent,
       });
 
       // Tools that mutate state or require user confirmation must run serially.
       // Read-only tools can run in parallel for much faster multi-tool turns.
+      //
+      // Use resolveToolName to map hallucinated aliases (e.g.
+      // "anonymous.submitPRReview") to the real registered tool name so
+      // mutation calls always go through the confirmation-gated serial path.
       const mutationTools = new Set(
         runtimeTools
           .filter((tool) => (tool.effect ?? 'read') !== 'read' && tool.confirmation?.required)
           .map((tool) => tool.name),
       );
 
-      const parallelCalls = (toolCalls as any[]).filter((tc) => !mutationTools.has(tc.name));
-      const serialCalls = (toolCalls as any[]).filter((tc) => mutationTools.has(tc.name));
+      // Resolve alias names before classifying parallel vs serial calls.
+      const resolvedCalls = (toolCalls as any[]).map((tc) => ({
+        ...tc,
+        name: resolveToolName(tc.name),
+      }));
+
+      const parallelCalls = resolvedCalls.filter((tc) => !mutationTools.has(tc.name));
+      const serialCalls = resolvedCalls.filter((tc) => mutationTools.has(tc.name));
 
       // Execute read-only tools in parallel
       const parallelResults = await Promise.all(
@@ -382,7 +502,7 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         const estimatedTokens = contextManager.estimateTokens(result);
 
         if (contextManager.needsCompaction(estimatedTokens)) {
-          console.log('🗜️ [ChatAgent] Compacting context after tool result');
+          console.log('🗝️ [ChatAgent] Compacting context after tool result');
           await contextManager.compactWithLLM();
         }
 
@@ -392,14 +512,14 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         });
       }
 
-      // Execute mutation tools serially (they may require user confirmation)
+      // Execute mutation tools serially (they may require confirmation)
       for (const toolCall of serialCalls) {
         const result = await executor.execute(toolCall, toolContext);
 
         const estimatedTokens = contextManager.estimateTokens(result);
 
         if (contextManager.needsCompaction(estimatedTokens)) {
-          console.log('🗜️ [ChatAgent] Compacting context after tool result');
+          console.log('🗝️ [ChatAgent] Compacting context after tool result');
           await contextManager.compactWithLLM();
         }
 
@@ -410,7 +530,7 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
       }
 
       // Loop again. The next completion sees the tool result and produces the
-      // final user-facing response (or another tool request if truly needed).
+      // final user-facing response.
     }
 
     yield '\n\nI reached the maximum number of tool turns before the request completed.';
