@@ -19,10 +19,13 @@ export function writeReview(
   const w = issues.filter((i) => i.severity === 'warning').length;
   const s = issues.filter((i) => i.severity === 'suggestion').length;
 
-  const verdict: PRReviewResult['overallVerdict'] = c > 0 || w >= 3 ? 'request_changes' : w > 0 ? 'comment' : 'approve';
+  const verdict: PRReviewResult['overallVerdict'] =
+    c > 0 || w >= 3 ? 'request_changes' : w > 0 ? 'comment' : 'approve';
 
   const parts: string[] = [
-    changePurpose && changePurpose.trim() ? changePurpose.trim() : `This review examines "${prTitle || 'the pull request'}" through an evidence-driven pipeline: the change was classified, specialist reviewers formed hypotheses, and each finding was adversarially verified before being reported.`,
+    changePurpose && changePurpose.trim()
+      ? changePurpose.trim()
+      : `This review examines "${prTitle || 'the pull request'}" through an evidence-driven pipeline: the change was classified, specialist reviewers formed hypotheses, and each finding was adversarially verified before being reported.`,
   ];
 
   if (rankedFindings.length > 0) {
@@ -30,7 +33,9 @@ export function writeReview(
       c > 0 ? `\n- **${c} critical**` : '',
       w > 0 ? `\n- **${w} warnings**` : '',
       s > 0 ? `\n- **${s} suggestions**` : '',
-    ].filter(Boolean).join('');
+    ]
+      .filter(Boolean)
+      .join('');
     parts.push(`### Findings${counts}`);
   } else {
     parts.push('No verified issues were found.');
@@ -47,7 +52,10 @@ function buildDesc(f: RankedFinding): string {
   if (f.evidence.length > 0) {
     parts.push(
       '\n**Evidence:**\n' +
-        f.evidence.slice(0, 5).map((e) => `- ${e.fact}${e.source ? ` (${e.source})` : ''}`).join('\n'),
+        f.evidence
+          .slice(0, 5)
+          .map((e) => `- ${e.fact}${e.source ? ` (${e.source})` : ''}`)
+          .join('\n'),
     );
   }
   parts.push(`\n**Confidence:** ${Math.round(f.confidence * 100)}%`);

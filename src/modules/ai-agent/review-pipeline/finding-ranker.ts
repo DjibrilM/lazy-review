@@ -92,10 +92,15 @@ export function dedupeFindings(findings: RankedFinding[]): RankedFinding[] {
     let placed = false;
     for (const group of groups) {
       const rep = group[0]!;
-      const repKeys = dedupeKey(rep.title + ' ' + rep.evidence.map((e) => e.fact).join(' ')).split(' ');
+      const repKeys = dedupeKey(rep.title + ' ' + rep.evidence.map((e) => e.fact).join(' ')).split(
+        ' ',
+      );
       const sameSpot =
-        rep.file && f.file && rep.file === f.file &&
-        rep.line !== undefined && f.line !== undefined &&
+        rep.file &&
+        f.file &&
+        rep.file === f.file &&
+        rep.line !== undefined &&
+        f.line !== undefined &&
         Math.abs((rep.line as number) - (f.line as number)) <= 5;
       const k = new Set(repKeys);
       const common = keys.filter((w) => k.has(w)).length;
@@ -110,7 +115,9 @@ export function dedupeFindings(findings: RankedFinding[]): RankedFinding[] {
   }
   return groups
     .map((group) => {
-      const best = group.reduce((acc, f) => (f.impactScore * f.likelihoodScore > acc.impactScore * acc.likelihoodScore ? f : acc));
+      const best = group.reduce((acc, f) =>
+        f.impactScore * f.likelihoodScore > acc.impactScore * acc.likelihoodScore ? f : acc,
+      );
       const evidence = new Map<string, { fact: string; source: string }>();
       group.forEach((f) => f.evidence.forEach((e) => evidence.set(e.fact + e.source, e)));
       const reportedBy = [...new Set(group.map((f) => f.category))];

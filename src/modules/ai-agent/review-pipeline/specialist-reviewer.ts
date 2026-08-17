@@ -43,7 +43,12 @@ Use "evidence" only from Explorer answers.`;
         const q = String(a.question ?? a.q ?? '');
         if (!q) return { error: 'question required' };
         const ans = await opts.askExplorer(q);
-        return { question: ans.question, facts: ans.facts, confidence: ans.confidence, missingEvidence: ans.missingEvidence };
+        return {
+          question: ans.question,
+          facts: ans.facts,
+          confidence: ans.confidence,
+          missingEvidence: ans.missingEvidence,
+        };
       },
     },
   ];
@@ -63,7 +68,11 @@ Use "evidence" only from Explorer answers.`;
 
   try {
     const parsed = extractJson(result.text);
-    const arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed.findings) ? parsed.findings : [];
+    const arr = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed.findings)
+        ? parsed.findings
+        : [];
     return arr
       .filter((f: any) => f && typeof f.hypothesis === 'string')
       .map((f: any): ReviewerCandidate => {
@@ -72,7 +81,10 @@ Use "evidence" only from Explorer answers.`;
           hypothesis: String(f.hypothesis),
           confidence: clamp(f.confidence),
           evidence: Array.isArray(f.evidence)
-            ? f.evidence.map((e: any) => ({ fact: String(e.fact ?? ''), source: String(e.source ?? '') }))
+            ? f.evidence.map((e: any) => ({
+                fact: String(e.fact ?? ''),
+                source: String(e.source ?? ''),
+              }))
             : [],
         };
         const impactScore = clampScore(f.impactScore);

@@ -8,7 +8,12 @@ export interface ChangeAnalyzerOpts {
 }
 
 const REVIEWERS: ReviewCategory[] = [
-  'correctness', 'security', 'performance', 'concurrency', 'architecture', 'maintainability',
+  'correctness',
+  'security',
+  'performance',
+  'concurrency',
+  'architecture',
+  'maintainability',
 ];
 
 export async function analyzeChange(
@@ -75,15 +80,27 @@ Rules:
   try {
     const p = extractJson(text);
     if (typeof p.purpose === 'string') model.purpose = p.purpose;
-    for (const key of ['changedComponents', 'behaviorsIntroduced', 'behaviorsModified', 'stateIntroduced', 'externalBoundaries', 'risks', 'investigationQuestions'] as const) {
+    for (const key of [
+      'changedComponents',
+      'behaviorsIntroduced',
+      'behaviorsModified',
+      'stateIntroduced',
+      'externalBoundaries',
+      'risks',
+      'investigationQuestions',
+    ] as const) {
       if (Array.isArray(p[key])) (model as any)[key] = p[key].map(String);
     }
     if (Array.isArray(p.reviewers)) {
-      const selected = p.reviewers.map(String).filter((r: string): r is ReviewCategory => (REVIEWERS as string[]).includes(r));
+      const selected = p.reviewers
+        .map(String)
+        .filter((r: string): r is ReviewCategory => (REVIEWERS as string[]).includes(r));
       if (selected.length > 0) model.reviewers = selected;
     }
   } catch {
-    model.investigationQuestions = ['What observable behavior does this change introduce or modify?'];
+    model.investigationQuestions = [
+      'What observable behavior does this change introduce or modify?',
+    ];
   }
 
   opts.progress?.(`[Analyzer] Reviewers: ${model.reviewers.join(', ')}`);

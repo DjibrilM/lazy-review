@@ -57,21 +57,21 @@ export function validateTools(tools: RuntimeTool[]): RuntimeTool[] {
  */
 const TOOL_ALIASES: Record<string, string> = {
   'anonymous.submitPRReview': 'leave_pr_comment',
-  'submitPRReview': 'leave_pr_comment',
-  'submit_review': 'leave_pr_comment',
-  'submite_review': 'leave_pr_comment',
-  'postComment': 'leave_pr_comment',
-  'post_comment': 'leave_pr_comment',
-  'leaveComment': 'leave_pr_comment',
-  'leave_comment': 'leave_pr_comment',
-  'postPRComment': 'leave_pr_comment',
-  'post_pr_comment': 'leave_pr_comment',
-  'submitComment': 'leave_pr_comment',
-  'submit_comment': 'leave_pr_comment',
-  'requestChanges': 'request_pr_changes',
-  'request_changes': 'request_pr_changes',
-  'requestPRChanges': 'request_pr_changes',
-  'request_pr_changes_review': 'request_pr_changes',
+  submitPRReview: 'leave_pr_comment',
+  submit_review: 'leave_pr_comment',
+  submite_review: 'leave_pr_comment',
+  postComment: 'leave_pr_comment',
+  post_comment: 'leave_pr_comment',
+  leaveComment: 'leave_pr_comment',
+  leave_comment: 'leave_pr_comment',
+  postPRComment: 'leave_pr_comment',
+  post_pr_comment: 'leave_pr_comment',
+  submitComment: 'leave_pr_comment',
+  submit_comment: 'leave_pr_comment',
+  requestChanges: 'request_pr_changes',
+  request_changes: 'request_pr_changes',
+  requestPRChanges: 'request_pr_changes',
+  request_pr_changes_review: 'request_pr_changes',
 };
 
 /**
@@ -134,9 +134,7 @@ export class ToolExecutor {
 
     // Use the resolved name for downstream logic (effect, confirmation, etc.).
     if (resolvedName !== originalName) {
-      console.log(
-        `🧭 [ToolExecutor] Resolved tool alias "${originalName}" → "${resolvedName}"`,
-      );
+      console.log(`🧭 [ToolExecutor] Resolved tool alias "${originalName}" → "${resolvedName}"`);
       toolCall.name = resolvedName;
     }
 

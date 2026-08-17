@@ -22,10 +22,7 @@ export function createPrChatTools(
     description: 'Get the exact diff for a specific file modified in this PR.',
     effect: 'read',
     parameters: z.object({
-      file_path: z
-        .string()
-        .optional()
-        .describe('The path of the changed file (e.g. src/main.ts).'),
+      file_path: z.string().optional().describe('The path of the changed file (e.g. src/main.ts).'),
       filePath: z
         .string()
         .optional()

@@ -54,32 +54,44 @@ export interface ChangeModel {
   reviewers: ReviewCategory[];
 }
 
-export const REVIEWER_DESCRIPTIONS: Record<ReviewCategory, { description: string; focus: string }> = {
-  correctness: {
-    description: 'Detect correctness bugs: race conditions, null dereferences, stale state, incorrect edge-case handling, and logic errors.',
-    focus: 'Does this change behave correctly under edge cases, unusual inputs, or unexpected ordering?',
-  },
-  security: {
-    description: 'Detect security vulnerabilities: injection, broken authorization, missing validation, unsafe deserialization, and leaked secrets.',
-    focus: 'Can an attacker leverage this change to violate confidentiality, integrity, or availability?',
-  },
-  performance: {
-    description: 'Detect performance problems: quadratic loops, blocking work in hot paths, unbounded queues, and wasted computation.',
-    focus: 'Does this change introduce latency, memory growth, or throughput regressions under realistic load?',
-  },
-  concurrency: {
-    description: 'Detect concurrency bugs: shared-state races, missing synchronization, deadlock, and unsafe async ordering.',
-    focus: 'Can this change corrupt state when multiple requests, connections, or processes interleave?',
-  },
-  architecture: {
-    description: 'Detect architectural defects: layer violations, hidden coupling, missing abstractions, and design-level breakage.',
-    focus: 'Does this change respect the module boundaries and architecture, or does it introduce structural debt?',
-  },
-  maintainability: {
-    description: 'Detect maintainability issues: duplicated logic, dead branches, unclear naming, and untestable code.',
-    focus: 'Will maintainers be able to safely modify or extend this code later?',
-  },
-};
+export const REVIEWER_DESCRIPTIONS: Record<ReviewCategory, { description: string; focus: string }> =
+  {
+    correctness: {
+      description:
+        'Detect correctness bugs: race conditions, null dereferences, stale state, incorrect edge-case handling, and logic errors.',
+      focus:
+        'Does this change behave correctly under edge cases, unusual inputs, or unexpected ordering?',
+    },
+    security: {
+      description:
+        'Detect security vulnerabilities: injection, broken authorization, missing validation, unsafe deserialization, and leaked secrets.',
+      focus:
+        'Can an attacker leverage this change to violate confidentiality, integrity, or availability?',
+    },
+    performance: {
+      description:
+        'Detect performance problems: quadratic loops, blocking work in hot paths, unbounded queues, and wasted computation.',
+      focus:
+        'Does this change introduce latency, memory growth, or throughput regressions under realistic load?',
+    },
+    concurrency: {
+      description:
+        'Detect concurrency bugs: shared-state races, missing synchronization, deadlock, and unsafe async ordering.',
+      focus:
+        'Can this change corrupt state when multiple requests, connections, or processes interleave?',
+    },
+    architecture: {
+      description:
+        'Detect architectural defects: layer violations, hidden coupling, missing abstractions, and design-level breakage.',
+      focus:
+        'Does this change respect the module boundaries and architecture, or does it introduce structural debt?',
+    },
+    maintainability: {
+      description:
+        'Detect maintainability issues: duplicated logic, dead branches, unclear naming, and untestable code.',
+      focus: 'Will maintainers be able to safely modify or extend this code later?',
+    },
+  };
 
 export function severityFromScore(impact: number, likelihood: number): Severity {
   const score = impact * likelihood;

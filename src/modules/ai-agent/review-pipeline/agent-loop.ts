@@ -61,8 +61,10 @@ function parseJsonToolCalls(text: string): ParsedToolCall[] {
   while ((m = regex.exec(text)) !== null) {
     try {
       const p = JSON.parse(m[0]);
-      if (p?.name && p.arguments !== undefined) calls.push({ name: String(p.name), arguments: p.arguments });
-      else if (p?.name && p?.args !== undefined) calls.push({ name: String(p.name), arguments: p.args });
+      if (p?.name && p.arguments !== undefined)
+        calls.push({ name: String(p.name), arguments: p.arguments });
+      else if (p?.name && p?.args !== undefined)
+        calls.push({ name: String(p.name), arguments: p.args });
     } catch {
       // skip
     }
@@ -88,9 +90,7 @@ function estimateTokens(v: unknown): number {
   return Math.ceil((t ?? '').length / 4);
 }
 
-export async function runAgentLoop(
-  opts: AgentLoopOptions,
-): Promise<AgentLoopResult> {
+export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopResult> {
   const {
     modelId,
     systemPrompt,
@@ -116,7 +116,11 @@ export async function runAgentLoop(
   let text = '';
   const toolResults: { name: string; args: Record<string, unknown>; result: unknown }[] = [];
 
-  while (iterations < maxIterations && toolCallsCount < maxToolCalls && sourceTokensUsed < maxSourceTokens) {
+  while (
+    iterations < maxIterations &&
+    toolCallsCount < maxToolCalls &&
+    sourceTokensUsed < maxSourceTokens
+  ) {
     iterations++;
     progress?.(`Iteration ${iterations}/${maxIterations}`);
 
@@ -130,9 +134,11 @@ export async function runAgentLoop(
       ...(kvCacheId ? { kvCache: kvCacheId } : {}),
     });
 
-    const result = await (('final' in run && typeof (run as any).final === 'function'
-      ? (run as any).final
-      : Promise.resolve(run)) as Promise<any>);
+    const result = await ((
+      'final' in run && typeof (run as any).final === 'function'
+        ? (run as any).final
+        : Promise.resolve(run)
+    ) as Promise<any>);
 
     const rawText: string = result?.contentText || result?.raw?.fullText || '';
 
@@ -162,7 +168,10 @@ export async function runAgentLoop(
 
       const tool = tools.find((t) => t.name === call.name);
       if (!tool) {
-        history.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: ${call.name}` }) });
+        history.push({
+          role: 'tool',
+          content: JSON.stringify({ error: `Unknown tool: ${call.name}` }),
+        });
         continue;
       }
 
@@ -173,7 +182,10 @@ export async function runAgentLoop(
 
         sourceTokensUsed += estimateTokens(resultValue);
         toolResults.push({ name: call.name, args: call.arguments, result: resultValue });
-        history.push({ role: 'tool', content: typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue) });
+        history.push({
+          role: 'tool',
+          content: typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue),
+        });
 
         if (shouldStopAfter && shouldStopAfter(call.name, resultValue)) {
           stop = true;

@@ -65,7 +65,8 @@ Output ONLY JSON:
   const tools: ToolDefinition[] = [
     {
       name: 'ask_explorer',
-      description: 'Ask the Repository Explorer a precise adversarial question. Returns evidence facts.',
+      description:
+        'Ask the Repository Explorer a precise adversarial question. Returns evidence facts.',
       handler: async (a) => {
         const q = String(a.question ?? a.q ?? '');
         if (!q) return { error: 'question required' };

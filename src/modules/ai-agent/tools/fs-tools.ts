@@ -58,9 +58,7 @@ export function createFsTools(projectRootPath: string) {
     description:
       'Read a specific range of lines from a file in the repository. Useful for reading large files in chunks or focusing on a specific section without loading the entire file.',
     parameters: z.object({
-      filePath: z
-        .string()
-        .describe('The relative path of the file to read (e.g., "src/index.ts")'),
+      filePath: z.string().describe('The relative path of the file to read (e.g., "src/index.ts")'),
       startLine: z
         .number()
         .int()
@@ -71,9 +69,19 @@ export function createFsTools(projectRootPath: string) {
         .int()
         .positive()
         .optional()
-        .describe('The 1-based line number to stop reading at (inclusive). Defaults to startLine + 100.'),
+        .describe(
+          'The 1-based line number to stop reading at (inclusive). Defaults to startLine + 100.',
+        ),
     }),
-    handler: async ({ filePath, startLine, endLine }: { filePath: string; startLine: number; endLine?: number }) => {
+    handler: async ({
+      filePath,
+      startLine,
+      endLine,
+    }: {
+      filePath: string;
+      startLine: number;
+      endLine?: number;
+    }) => {
       console.log(`[Tool Execution] read_file_lines`, { filePath, startLine, endLine });
       try {
         const resolved = safeResolve(filePath);

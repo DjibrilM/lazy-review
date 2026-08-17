@@ -65,7 +65,12 @@ export class RepositoryExplorer {
       for (const ent of entries) {
         if (results.length >= LIMIT_HITS) return;
         if (ent.isDirectory()) {
-          if (['node_modules', '.git', 'dist', 'build', '.next', '.cache', 'coverage'].includes(ent.name)) continue;
+          if (
+            ['node_modules', '.git', 'dist', 'build', '.next', '.cache', 'coverage'].includes(
+              ent.name,
+            )
+          )
+            continue;
           await walk(path.join(dir, ent.name));
           continue;
         }
@@ -92,7 +97,11 @@ export class RepositoryExplorer {
       {
         name: 'search_symbol',
         description: 'Search the repo for a symbol/keyword. Returns up to 20 matches.',
-        handler: async (a) => this.doSearch(String(a.keyword ?? ''), a.fileExtension ? String(a.fileExtension) : undefined),
+        handler: async (a) =>
+          this.doSearch(
+            String(a.keyword ?? ''),
+            a.fileExtension ? String(a.fileExtension) : undefined,
+          ),
       },
       {
         name: 'read_file',
@@ -121,7 +130,10 @@ export class RepositoryExplorer {
           return {
             file: p,
             lines: `${s}-${e} of ${ls.length}`,
-            content: ls.slice(s - 1, e).map((l, i) => `${s + i}\t${l}`).join('\n'),
+            content: ls
+              .slice(s - 1, e)
+              .map((l, i) => `${s + i}\t${l}`)
+              .join('\n'),
           };
         },
       },
@@ -230,7 +242,8 @@ No markdown.`,
       if (typeof p.confidence === 'number') confidence = Math.min(1, Math.max(0, p.confidence));
       if (typeof p.missingEvidence === 'boolean') missing = p.missingEvidence;
     } catch {
-      if (result.text.trim()) facts = [{ fact: result.text.trim().slice(0, 2000), source: 'explorer-response' }];
+      if (result.text.trim())
+        facts = [{ fact: result.text.trim().slice(0, 2000), source: 'explorer-response' }];
     }
 
     return { question, facts, confidence: missing ? 0 : confidence, missingEvidence: missing };

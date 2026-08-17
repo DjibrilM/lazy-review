@@ -48,7 +48,8 @@ export class ReviewController {
     );
 
     // 2. Specialist reviewers form hypotheses via explorer.
-    const reviewers: ReviewCategory[] = model.reviewers.length > 0 ? model.reviewers : ['correctness'];
+    const reviewers: ReviewCategory[] =
+      model.reviewers.length > 0 ? model.reviewers : ['correctness'];
     p(`Running reviewers: ${reviewers.join(', ')}`);
 
     const candidates: ReviewerCandidate[] = [];
@@ -56,7 +57,12 @@ export class ReviewController {
       try {
         const found = await reviewAsSpecialist(
           cat,
-          { modelId: this.opts.llmId, kvCacheId: this.opts.projectId, progress: p, askExplorer: (q) => this.explorer.ask(q) },
+          {
+            modelId: this.opts.llmId,
+            kvCacheId: this.opts.projectId,
+            progress: p,
+            askExplorer: (q) => this.explorer.ask(q),
+          },
           this.opts.diffText,
           model.purpose,
         );
@@ -71,28 +77,39 @@ export class ReviewController {
     for (const candidate of candidates) {
       p(`Verifying: ${candidate.hypothesis.slice(0, 70)}...`);
       const verdict = await verifyFinding(
-        { modelId: this.opts.llmId, kvCacheId: this.opts.projectId, progress: p, askExplorer: (q) => this.explorer.ask(q) },
+        {
+          modelId: this.opts.llmId,
+          kvCacheId: this.opts.projectId,
+          progress: p,
+          askExplorer: (q) => this.explorer.ask(q),
+        },
         {
           hypothesis: candidate.hypothesis,
           category: candidate.category,
           evidence: candidate.evidence,
           ...(candidate.location ? { location: candidate.location } : {}),
-          ...(candidate.impactDescription ? { impactDescription: candidate.impactDescription } : {}),
+          ...(candidate.impactDescription
+            ? { impactDescription: candidate.impactDescription }
+            : {}),
         },
       );
       if (verdict.verdict === 'confirmed') {
-        verified.push(toRankedFinding({
-          hypothesis: candidate.hypothesis,
-          category: candidate.category,
-          confidence: verdict.confidence,
-          impactScore: candidate.impactScore,
-          likelihoodScore: candidate.likelihoodScore,
-          recommendation: verdict.recommendation ?? candidate.recommendation,
-          invariant: verdict.invariant ?? candidate.invariant,
-          evidence: candidate.evidence,
-          location: candidate.location,
-          ...(candidate.impactDescription && !verdict.recommendation ? { impact: candidate.impactDescription } : {}),
-        }));
+        verified.push(
+          toRankedFinding({
+            hypothesis: candidate.hypothesis,
+            category: candidate.category,
+            confidence: verdict.confidence,
+            impactScore: candidate.impactScore,
+            likelihoodScore: candidate.likelihoodScore,
+            recommendation: verdict.recommendation ?? candidate.recommendation,
+            invariant: verdict.invariant ?? candidate.invariant,
+            evidence: candidate.evidence,
+            location: candidate.location,
+            ...(candidate.impactDescription && !verdict.recommendation
+              ? { impact: candidate.impactDescription }
+              : {}),
+          }),
+        );
       }
     }
 
