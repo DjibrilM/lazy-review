@@ -153,6 +153,67 @@ export class ProjectServices {
     }
   }
 
+  async startPRSession(req: Request, res: Response) {
+    try {
+      const projectId = req.params.id as string;
+      const pullNumber = Number(req.params.pull_number);
+      const { prDiff } = req.body;
+
+      if (!prDiff) {
+        return res.status(400).json({ error: 'prDiff is required' });
+      }
+
+      if (!Number.isFinite(pullNumber)) {
+        return res.status(400).json({ error: 'pull_number must be a valid number' });
+      }
+
+      const project = await ProjectEntity.findOne({ where: { id: projectId } });
+      if (!project) {
+        return res.status(404).json({ message: 'Project not found' });
+      }
+
+      await this.mainModule.aiAgent.sessionManager.startSession(
+        projectId,
+        pullNumber,
+        prDiff,
+        (message) => {
+          if (this.mainModule.socket) {
+            this.mainModule.socket.emitModelProgress({ projectId, pullNumber, message });
+          }
+        },
+      );
+
+      return res.status(200).json({ message: 'PR review session started successfully' });
+    } catch (error: any) {
+      console.error('Failed to start PR session:', error);
+      return res.status(500).json({ error: error.message || 'Failed to start PR session' });
+    }
+  }
+
+  async stopPRSession(req: Request, res: Response) {
+    try {
+      const projectId = req.params.id as string;
+      const pullNumber = Number(req.params.pull_number);
+
+      if (!Number.isFinite(pullNumber)) {
+        return res.status(400).json({ error: 'pull_number must be a valid number' });
+      }
+
+      const stopped = this.mainModule.aiAgent.sessionManager.stopSession(projectId, pullNumber);
+
+      if (stopped) {
+        await this.mainModule.aiAgent.prReviewAgent.unloadModels();
+      }
+
+      return res.json({
+        message: stopped ? 'PR review session stopped successfully' : 'No active session found',
+      });
+    } catch (error: any) {
+      console.error('Failed to stop PR session:', error);
+      return res.status(500).json({ error: error.message || 'Failed to stop PR session' });
+    }
+  }
+
   async getReview(req: Request, res: Response) {
     try {
       const id = req.params.id as string;
@@ -212,7 +273,13 @@ export class ProjectServices {
 
       // Fire off in background
       this.mainModule.aiAgent.prReviewAgent
-        .generatePRReview(projectId, prDiff, prTitle || 'Untitled PR', prBody || '')
+        .generatePRReview(
+          projectId,
+          prDiff,
+          prTitle || 'Untitled PR',
+          prBody || '',
+          Number(prNumber),
+        )
         .then(async (review) => {
           // Re-fetch project to avoid race conditions with other updates
           const p = await ProjectEntity.findOne({ where: { id: projectId } });

@@ -40,7 +40,7 @@ export const AgentConfirmationModal = () => {
       const modalReq: ModalRequest = {
         id: req.id,
         type: 'confirmation',
-        message: req.question,
+        message: req.action.title + (req.action.description ? `\n\n${req.action.description}` : ''),
       };
       setRequestQueue((prev) => {
         const next = [...prev, modalReq];

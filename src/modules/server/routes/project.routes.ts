@@ -54,6 +54,14 @@ export default class ProjectRouts {
       return this.projectServices.unloadModels(req, res);
     });
 
+    this.app.post('/projects/:id/review/:pull_number/session/start', (req, res) => {
+      return this.projectServices.startPRSession(req, res);
+    });
+
+    this.app.post('/projects/:id/review/:pull_number/session/stop', (req, res) => {
+      return this.projectServices.stopPRSession(req, res);
+    });
+
     // AI-powered PR review generation
     this.app.post('/projects/:id/review', (req, res) => {
       return this.projectServices.generateReview(req, res);
@@ -73,6 +81,7 @@ export default class ProjectRouts {
         additions,
         deletions,
         changed_files,
+        socketId,
       } = req.body;
 
       try {
@@ -82,6 +91,7 @@ export default class ProjectRouts {
           message,
           prDiff,
           { owner, repo, pull_number, creator, additions, deletions, changed_files },
+          socketId,
         );
 
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');

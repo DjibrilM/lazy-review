@@ -1,4 +1,3 @@
-
 import {
   AlertCircle,
   BrainCircuit,
@@ -12,6 +11,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/util/shared';
+import { normalizeReasoningMarkers } from '@/lib/util/chat-markers';
 import type { ChatMessage } from '../hooks/useChat';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 
@@ -34,11 +34,16 @@ type MessagePart =
   | { type: 'think'; content: string; complete: boolean };
 
 /**
- * Parses both the normal <think>...</think> format and the alternate thought
- * channel markers used by some models. An unfinished thinking block is marked
- * complete=false so the UI knows it is still actively streaming.
+ * Parses both the normal  thinking... response format, the alternate thought
+ * channel markers used by some models, and the explicit <thinking> tags
+ * emitted by the backend chat agent.
+ *
+ * An unfinished thinking block is marked complete=false so the UI knows it is
+ * still actively streaming.
  */
 function parseMessageContent(content: string): MessagePart[] {
+  console.log('🔥 ACTUAL PARSER CALLED');
+
   const parts: MessagePart[] = [];
   let cursor = 0;
 
@@ -46,20 +51,58 @@ function parseMessageContent(content: string): MessagePart[] {
     const thinkStart = content.indexOf('<think>', cursor);
     const channelStart = content.indexOf('<|channel>thought', cursor);
 
+    console.log('PARSER STATE', {
+      cursor,
+      thinkStart,
+      channelStart,
+      hasChannel: content.includes('<|channel>thought'),
+      content: JSON.stringify(content),
+    });
+
     const candidates = [
-      thinkStart >= 0 ? { index: thinkStart, start: '<think>', end: '</think>' } : null,
-      channelStart >= 0
-        ? { index: channelStart, start: '<|channel>thought', end: '<channel|>' }
+      thinkStart >= 0
+        ? {
+          index: thinkStart,
+          start: '<think>',
+          end: '</think>',
+        }
         : null,
-    ].filter(Boolean) as { index: number; start: string; end: string }[];
+
+      channelStart >= 0
+        ? {
+          index: channelStart,
+          start: '<|channel>thought',
+          end: '<channel|>',
+        }
+        : null,
+    ].filter(Boolean) as {
+      index: number;
+      start: string;
+      end: string;
+    }[];
+
+    console.log('CANDIDATES', candidates);
 
     if (candidates.length === 0) {
+      console.log('❌ ENTERED TEXT FALLBACK');
+
       const text = content.slice(cursor);
-      if (text) parts.push({ type: 'text', content: text });
+
+      if (text) {
+        parts.push({
+          type: 'text',
+          content: text,
+        });
+      }
+
       break;
     }
 
-    const marker = candidates.sort((a, b) => a.index - b.index)[0];
+    const marker = candidates.sort(
+      (a, b) => a.index - b.index,
+    )[0];
+
+    console.log('MARKER', marker);
 
     if (marker.index > cursor) {
       parts.push({
@@ -68,8 +111,19 @@ function parseMessageContent(content: string): MessagePart[] {
       });
     }
 
-    const thoughtStart = marker.index + marker.start.length;
-    const thoughtEnd = content.indexOf(marker.end, thoughtStart);
+    const thoughtStart =
+      marker.index + marker.start.length;
+
+    const thoughtEnd = content.indexOf(
+      marker.end,
+      thoughtStart,
+    );
+
+    console.log('THOUGHT', {
+      thoughtStart,
+      thoughtEnd,
+      endMarker: marker.end,
+    });
 
     if (thoughtEnd === -1) {
       parts.push({
@@ -77,19 +131,27 @@ function parseMessageContent(content: string): MessagePart[] {
         content: content.slice(thoughtStart),
         complete: false,
       });
+
       break;
     }
 
     parts.push({
       type: 'think',
-      content: content.slice(thoughtStart, thoughtEnd),
+      content: content.slice(
+        thoughtStart,
+        thoughtEnd,
+      ),
       complete: true,
     });
 
     cursor = thoughtEnd + marker.end.length;
   }
 
-  return parts.filter((part) => part.content.length > 0);
+  console.log('🔥 FINAL PARTS', parts);
+
+  return parts.filter(
+    (part) => part.content.length > 0,
+  );
 }
 
 function ThinkingPlaceholder() {
@@ -119,8 +181,7 @@ function AnimatedThought({
       return;
     }
 
-    // As soon as thinking finishes, automatically collapse it. The user can
-    // still reopen it afterward.
+    // As soon as thinking finishes, automatically collapse it.
     if (!manuallyToggled.current) {
       setIsOpen(false);
     }
@@ -170,7 +231,7 @@ function AnimatedThought({
         <div className="min-h-0 overflow-hidden">
           <div
             ref={scrollRef}
-            className="max-h-72 overflow-y-auto border-t border-border/50 px-2.5 py-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap"
+            className="overflow-y-auto border-t border-border/50 px-2.5 py-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap"
           >
             {content}
           </div>
@@ -234,7 +295,12 @@ function AgentConfirmationRequest({
       </div>
 
       <div className="px-3 py-2.5 text-xs leading-5 text-foreground/90 [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:my-1 [&_pre]:text-[11px]">
-        <MarkdownRenderer content={msg.agentConfirmationData.question} />
+        <div className="whitespace-pre-wrap text-[11px] leading-4 text-foreground/80">
+          {msg.agentConfirmationData.action.title}
+          {msg.agentConfirmationData.action.description
+            ? `\n\n${msg.agentConfirmationData.action.description}`
+            : ''}
+        </div>
       </div>
 
       <div className="flex gap-2 border-t border-border/60 bg-muted/15 px-3 py-2">
@@ -282,7 +348,7 @@ export function AIChatSidebar({
     () =>
       messages.map((message) => ({
         message,
-        parts: parseMessageContent(message.content ?? ''),
+        parts: parseMessageContent(normalizeReasoningMarkers(message.content ?? '')),
       })),
     [messages],
   );
@@ -299,6 +365,42 @@ export function AIChatSidebar({
         !lastMessage.content?.trim() &&
         lastMessage.requiresConfirmation !== 'agent_confirmation'));
 
+
+
+  const test =
+    '<|channel>thought\n' +
+    'The user is just saying "hey" again. Since there is no specific request, ' +
+    'I should prompt them to give me a task.' +
+    "<channel|>Hello! Let me know what you'd like me to look at.";
+
+  console.log('PARSER TEST:', parseMessageContent(test));
+
+  const marker = '<|channel>thought';
+
+  console.log('TEST:', JSON.stringify(test));
+  console.log('MARKER:', JSON.stringify(marker));
+
+  console.log('includes:', test.includes(marker));
+  console.log('indexOf:', test.indexOf(marker));
+
+  console.log(
+    'test chars:',
+    [...test.slice(0, marker.length)].map((char) => ({
+      char,
+      code: char.charCodeAt(0),
+    })),
+  );
+
+  console.log(
+    'marker chars:',
+    [...marker].map((char) => ({
+      char,
+      code: char.charCodeAt(0),
+    })),
+  );
+
+  console.log('PARSER TEST:', parseMessageContent(test));
+
   return (
     <div className="relative z-10 flex h-full w-full min-w-[300px] flex-col bg-background">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border/70 px-3">
@@ -310,8 +412,11 @@ export function AIChatSidebar({
 
       <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {parsedMessages.map(({ message: msg, parts }) => {
+          console.log(msg, 'message')
           const isUser = msg.role === 'user';
           const isSystem = msg.role === 'system';
+
+
 
           return (
             <div
@@ -329,7 +434,27 @@ export function AIChatSidebar({
               >
                 <div className="space-y-1.5">
                   {parts.map((part, index) => {
+
+
+                    console.log('🔥 RENDER PART', {
+                      messageId: msg.id,
+                      index,
+                      type: part.type,
+                      content: part.content,
+                      ...(part.type === 'think'
+                        ? { complete: part.complete }
+                        : {}),
+                    });
+
+
+
+
                     if (part.type === 'think') {
+
+
+                      console.log('🧠 RENDERING AnimatedThought');
+
+
                       return (
                         <AnimatedThought
                           key={`${msg.id}-think-${index}`}

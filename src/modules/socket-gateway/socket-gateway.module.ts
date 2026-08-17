@@ -3,12 +3,19 @@ import { Server, Socket } from 'socket.io';
 import { MainModule } from '../main.module.js';
 
 import crypto from 'crypto';
+import type { AgentConfirmationRequest } from '../ai-agent/tool-types.js';
+
+type PendingConfirmation = {
+  socketId: string;
+  sessionId: string;
+  resolve: (approved: boolean) => void;
+};
 
 export default class SocketModule {
   io: Server;
   mainModule: MainModule;
   connections: Map<string, Socket> = new Map();
-  private pendingConfirmations: Map<string, (approved: boolean) => void> = new Map();
+  private pendingConfirmations: Map<string, PendingConfirmation> = new Map();
 
   constructor(server: http.Server, mainModule: MainModule) {
     this.mainModule = mainModule;
@@ -25,31 +32,60 @@ export default class SocketModule {
       socket.on('disconnect', () => {
         console.log('user disconnected');
         this.connections.delete(socket.id);
+
+        // Reject any pending confirmations owned by this socket.
+        for (const [id, pending] of this.pendingConfirmations) {
+          if (pending.socketId === socket.id) {
+            pending.resolve(false);
+            this.pendingConfirmations.delete(id);
+          }
+        }
       });
 
       socket.on('agent-confirmation-response', (data: { id: string; approved: boolean }) => {
-        const resolve = this.pendingConfirmations.get(data.id);
-        if (resolve) {
-          resolve(data.approved);
-          this.pendingConfirmations.delete(data.id);
+        const pending = this.pendingConfirmations.get(data.id);
+
+        if (!pending) return;
+
+        // Only the socket that initiated the confirmation may respond.
+        if (pending.socketId !== socket.id) {
+          console.warn('Rejected confirmation response from wrong socket');
+          return;
         }
+
+        pending.resolve(data.approved);
+        this.pendingConfirmations.delete(data.id);
       });
     });
   }
 
-  requestConfirmation(question: string): Promise<boolean> {
+  /**
+   * Request a structured confirmation from a specific socket. The confirmation
+   * is bound to the initiating socket so no other connected client can respond.
+   */
+  requestConfirmation(socketId: string, confirmation: AgentConfirmationRequest): Promise<boolean> {
     const id = crypto.randomUUID();
+
     return new Promise<boolean>((resolve) => {
-      this.pendingConfirmations.set(id, resolve);
-      this.io.emit('agent-confirmation-request', { id, question });
+      this.pendingConfirmations.set(id, {
+        resolve,
+        socketId,
+        sessionId: confirmation.sessionId,
+      });
+
+      this.io.to(socketId).emit('agent-confirmation-request', {
+        id,
+        ...confirmation,
+      });
 
       // Timeout after 15 minutes (defaults to false / deny)
       setTimeout(() => {
-        const resolvePending = this.pendingConfirmations.get(id);
-        if (resolvePending) {
-          resolvePending(false);
-          this.pendingConfirmations.delete(id);
-        }
+        const pending = this.pendingConfirmations.get(id);
+
+        if (!pending) return;
+
+        pending.resolve(false);
+        this.pendingConfirmations.delete(id);
       }, 900000);
     });
   }

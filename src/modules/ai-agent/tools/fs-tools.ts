@@ -17,7 +17,7 @@ export function createFsTools(projectRootPath: string) {
   const readFileTool = {
     name: 'read_file',
     description:
-      'Read the contents of a specific file in the repository. Input should be a relative path from the project root.',
+      'Read the contents of a specific file in the repository. Input should be a relative path from the project root. Files up to 80KB are read in full; larger files are truncated to the first 80KB.',
     parameters: z.object({
       filePath: z
         .string()
@@ -32,15 +32,80 @@ export function createFsTools(projectRootPath: string) {
           return `Error: "${filePath}" is not a file.`;
         }
 
-        const sizeLimit = 15 * 1024; // 15KB
+        const sizeLimit = 80 * 1024; // 80KB
         if (stat.size > sizeLimit) {
-          return `File too large (${(stat.size / 1024).toFixed(1)} KB). Please use get_file_outline and read_symbol instead to explore this file while saving context window.`;
+          const fd = await fs.open(resolved, 'r');
+          try {
+            const buffer = Buffer.alloc(sizeLimit);
+            const { bytesRead } = await fd.read(buffer, 0, buffer.length, 0);
+            return `${buffer.subarray(0, bytesRead).toString('utf-8')}\n\n[File truncated: ${(stat.size / 1024).toFixed(1)} KB total. Use read_file_lines to read specific line ranges.]`;
+          } finally {
+            await fd.close();
+          }
         }
 
         const content = await fs.readFile(resolved, 'utf-8');
         return content;
       } catch (error: any) {
+        console.error(error);
         return `Error reading file: ${error.message}`;
+      }
+    },
+  };
+
+  const readFileLinesTool = {
+    name: 'read_file_lines',
+    description:
+      'Read a specific range of lines from a file in the repository. Useful for reading large files in chunks or focusing on a specific section without loading the entire file.',
+    parameters: z.object({
+      filePath: z.string().describe('The relative path of the file to read (e.g., "src/index.ts")'),
+      startLine: z
+        .number()
+        .int()
+        .positive()
+        .describe('The 1-based line number to start reading from (inclusive).'),
+      endLine: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          'The 1-based line number to stop reading at (inclusive). Defaults to startLine + 100.',
+        ),
+    }),
+    handler: async ({
+      filePath,
+      startLine,
+      endLine,
+    }: {
+      filePath: string;
+      startLine: number;
+      endLine?: number;
+    }) => {
+      console.log(`[Tool Execution] read_file_lines`, { filePath, startLine, endLine });
+      try {
+        const resolved = safeResolve(filePath);
+        const stat = await fs.stat(resolved);
+        if (!stat.isFile()) {
+          return `Error: "${filePath}" is not a file.`;
+        }
+
+        const content = await fs.readFile(resolved, 'utf-8');
+        const lines = content.split('\n');
+        const end = endLine ?? Math.min(startLine + 99, lines.length);
+        const start = Math.max(1, startLine);
+
+        if (start > lines.length) {
+          return `Error: File "${filePath}" has only ${lines.length} lines.`;
+        }
+
+        const slice = lines.slice(start - 1, end);
+        const numbered = slice.map((line, i) => `${start + i}\t${line}`).join('\n');
+        const totalLines = lines.length;
+
+        return `Lines ${start}-${Math.min(end, totalLines)} of ${totalLines} in ${filePath}:\n\n${numbered}`;
+      } catch (error: any) {
+        return `Error reading file lines: ${error.message}`;
       }
     },
   };
@@ -191,6 +256,7 @@ export function createFsTools(projectRootPath: string) {
 
   return [
     readFileTool,
+    readFileLinesTool,
     readDirectoryTool,
     getDirectoryTreeTool,
     getFileOutlineTool,

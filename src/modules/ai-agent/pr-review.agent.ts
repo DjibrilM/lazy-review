@@ -32,15 +32,39 @@ export class PrReviewAgent extends BaseAgent {
     prDiff: string,
     prTitle: string,
     prBody: string,
+    prNumber: number,
   ): Promise<PRReviewResult> {
-    const { llmId, embeddingId } = await this.ensureModelsLoaded();
+    const session = this.mainModule.aiAgent.sessionManager.getSession(projectId, prNumber);
 
-    const project = await ProjectEntity.findOne({ where: { id: projectId } });
-    if (!project) throw new Error(`Project ${projectId} not found.`);
+    let llmId: string;
+    let embeddingId: string;
+    let parsedDiffFiles: { file: string; diff: string }[];
+    let baseTools: any[];
+    let projectOverview: string;
 
-    const gitTools = createGitTools(project.repository_path);
-    const fsTools = createFsTools(project.repository_path);
-    const tools = [...gitTools, ...fsTools];
+    if (session) {
+      llmId = session.llmId;
+      embeddingId = session.embeddingId;
+      parsedDiffFiles = session.parsedDiffFiles;
+      baseTools = [...session.gitTools, ...session.fsTools];
+      projectOverview = session.projectOverview;
+    } else {
+      const models = await this.ensureModelsLoaded();
+      llmId = models.llmId;
+      embeddingId = models.embeddingId;
+
+      const project = await ProjectEntity.findOne({ where: { id: projectId } });
+      if (!project) throw new Error(`Project ${projectId} not found.`);
+
+      baseTools = [
+        ...createGitTools(project.repository_path),
+        ...createFsTools(project.repository_path),
+      ];
+      parsedDiffFiles = prDiff ? parseDiff(prDiff) : [];
+      projectOverview = project.analysis
+        ? createProjectManifestSummary(project.analysis)
+        : 'No project overview available.';
+    }
 
     const context = await this.getRelevantContext(
       projectId,
@@ -52,6 +76,7 @@ export class PrReviewAgent extends BaseAgent {
               "summary": "2-3 paragraph markdown summary of the PR and your overall assessment",
               "overallVerdict": "approve" | "request_changes" | "comment",
               "issues": [
+                // List ALL issues found. You can have multiple issues here (0, 1, or many).
                 {
                   "severity": "critical" | "warning" | "suggestion",
                   "title": "Short title of the issue",
@@ -65,26 +90,38 @@ export class PrReviewAgent extends BaseAgent {
 
     const systemPrompt = `You are an expert autonomous code reviewer embedded in Cactus Review. You have access to the project's architectural manifest which describes the codebase conventions, patterns, and rules.
 
-            Your job is to review the provided pull request diff and identify:
+            Your job is to review the provided pull request and identify ALL:
             1. Architectural violations (violations of the project's established conventions)
             2. Security issues
             3. Code quality concerns
             4. Suggestions for improvement
 
-            You must use your tools (like switch_branch, get_pr_files, get_file_diff, and read_file) to investigate the PR thoroughly before rendering a verdict.
-            Once you have enough context, you MUST output ONLY valid JSON matching this exact schema — no markdown, no explanation outside the JSON:
+            Examine each file change carefully. Do not be lazy. You should output all issues you find. The issues array can contain as many items as necessary. If there are no issues, the array should be empty.
+
+            Output ONLY valid JSON matching this exact schema — no markdown, no explanation outside the JSON:
             ${jsonSchema}`;
 
-    const parsedDiffFiles = prDiff ? parseDiff(prDiff) : [];
-    const changedFiles = parsedDiffFiles.map((f) => f.file);
-    const diffSnippet =
-      changedFiles.length > 0
-        ? `## Changed Files in PR:\n${changedFiles.map((f) => `- ${f}`).join('\n')}\n\nUse the \`read_pr_file_diff\` tool to view the exact changes for these files.`
-        : 'No files changed.';
+    const parsedDiffFilesForSnippet = session?.parsedDiffFiles ?? (prDiff ? parseDiff(prDiff) : []);
+    let diffSnippet = '';
+    if (parsedDiffFilesForSnippet.length > 0) {
+      diffSnippet = `## Changed Files and Diffs in PR:\n`;
+      let totalLength = 0;
+      for (const fileDiff of parsedDiffFilesForSnippet) {
+        if (totalLength > 20000) {
+          diffSnippet += `### File: ${fileDiff.file} (Diff omitted due to size limit)\n\n`;
+          continue;
+        }
+        const truncatedFileDiff =
+          fileDiff.diff.length > 6000
+            ? fileDiff.diff.substring(0, 6000) + '\n... [TRUNCATED] ...'
+            : fileDiff.diff;
 
-    const projectOverview = project.analysis
-      ? createProjectManifestSummary(project.analysis)
-      : 'No project overview available.';
+        diffSnippet += `### File: ${fileDiff.file}\n\`\`\`diff\n${truncatedFileDiff}\n\`\`\`\n\n`;
+        totalLength += truncatedFileDiff.length;
+      }
+    } else {
+      diffSnippet = 'No files changed.';
+    }
 
     // Provide the tool so the agent can read files slowly and on-demand
     const readPrFileDiffTool = {
@@ -114,7 +151,7 @@ export class PrReviewAgent extends BaseAgent {
       },
     };
 
-    const runtimeTools = [...tools, readPrFileDiffTool, semanticSearchTool];
+    const runtimeTools = [...baseTools, readPrFileDiffTool, semanticSearchTool];
 
     const userMessage = `/no_think
             ## Codebase Overview (Project Manifest)
@@ -129,7 +166,7 @@ export class PrReviewAgent extends BaseAgent {
             ${prBody ? `**Description:** ${prBody}\n\n` : ''}
             ${diffSnippet}
 
-      Review this PR. You MUST use the \`read_pr_file_diff\` tool to read the specific file diffs you need to explore the changes. Output your JSON review when done.`;
+      Review this PR carefully and identify all issues. You may use tools (like read_file, get_pr_files, semantic_search) if you need additional codebase context. Output your JSON review when done.`;
 
     const contextManager = new AgentContextManager(
       systemPrompt,
@@ -213,7 +250,6 @@ export class PrReviewAgent extends BaseAgent {
                 toolResult = await (tool as any).invoke(call.arguments);
               }
 
-              const estimatedTokens = contextManager.estimateTokens(toolResult);
               // Compaction removed temporarily
               contextManager.addRecent({
                 role: 'tool',

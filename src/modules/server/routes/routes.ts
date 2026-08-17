@@ -21,7 +21,10 @@ class Routes {
     this.githubRoutes = new GithubRoutes(this.app, this.mainModule);
     this.qvacRoutes = new QvacRoutes(this.app, this.mainModule);
 
-    const settingsService = new SettingsService(this.mainModule.database.appDataSource);
+    const settingsService = new SettingsService(
+      this.mainModule.database.appDataSource,
+      this.mainModule,
+    );
     this.settingsController = new SettingsController(settingsService);
   }
 

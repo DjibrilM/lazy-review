@@ -7,4 +7,22 @@ export default class SettingsEntity {
 
   @Column({ default: false })
   useExperimentalGpu: boolean;
+
+  @Column({ default: 0 })
+  cpuCores: number;
+
+  @Column({ default: 0 })
+  totalRamGb: number;
+
+  @Column({ default: 0 })
+  gpuRamGb: number;
+
+  @Column({ default: 0 })
+  storageUsedGb: number;
+
+  @Column({ default: 0 })
+  storageTotalGb: number;
+
+  @Column({ default: 128000 })
+  contextSizeLimit: number;
 }

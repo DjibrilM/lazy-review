@@ -7,7 +7,31 @@ import type {
 
 export interface AgentConfirmationRequest {
   id: string;
-  question: string;
+  sessionId: string;
+  toolCallId: string;
+  action: {
+    type: string;
+    title: string;
+    description?: string;
+  };
+  tool: {
+    name: string;
+    arguments: Record<string, unknown>;
+  };
+  target?: {
+    provider: 'github';
+    owner: string;
+    repo: string;
+    pullNumber?: number;
+  };
+  request?: {
+    method: string;
+    endpoint?: string;
+    payload: unknown;
+  };
+  conversation?: {
+    messages: Array<{ role: string; content: string }>;
+  };
 }
 
 export interface AgentFeedbackRequest {

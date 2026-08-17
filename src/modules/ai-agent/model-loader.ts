@@ -4,7 +4,15 @@ import { LLM_MODEL_ID, EMBEDDING_MODEL_ID } from '../../constants.js';
 import SettingsEntity from '../server/entities/settings.entity.js';
 import type { MainModule } from '../main.module.js';
 
+/** Cache loaded model IDs to avoid re-loading on every indexing run */
+let cachedModelIds: { llmModelId: string; embeddingModelId: string } | null = null;
+
 export async function loadAIModels(mainModule: MainModule, activeRequestIds: Set<string>) {
+  // Return cached IDs if available - loading models is expensive
+  if (cachedModelIds) {
+    return cachedModelIds;
+  }
+
   const LLM_CTX_SIZE = 128000;
   let llmLoadedId: string = (qvacModels as any)[LLM_MODEL_ID]?.modelId ?? LLM_MODEL_ID;
   let embeddingLoadedId: string =
@@ -14,8 +22,18 @@ export async function loadAIModels(mainModule: MainModule, activeRequestIds: Set
   const qvacEmbedding = (qvacModels as any)[EMBEDDING_MODEL_ID];
 
   const settingsRepo = mainModule.database.appDataSource.getRepository(SettingsEntity);
-  const settings = await settingsRepo.findOneBy({ id: 1 });
-  const deviceConfig = settings?.useExperimentalGpu ? undefined : 'cpu';
+  let settings = await settingsRepo.findOneBy({ id: 1 });
+  if (!settings) {
+    settings = settingsRepo.create({ id: 1, useExperimentalGpu: false });
+    await settingsRepo.save(settings);
+  }
+
+  const useGpu = Boolean(settings.useExperimentalGpu);
+  const deviceConfig = useGpu ? undefined : 'cpu';
+
+  console.log(
+    `Using device: ${useGpu ? 'gpu (Metal/CUDA)' : 'cpu'} (useExperimentalGpu=${useGpu})`,
+  );
 
   const loadGemma4 = async () => {
     if (qvacLlm) {
@@ -70,5 +88,6 @@ export async function loadAIModels(mainModule: MainModule, activeRequestIds: Set
 
   await Promise.all([loadGemma4(), loadGte()]);
 
-  return { llmModelId: llmLoadedId, embeddingModelId: embeddingLoadedId };
+  cachedModelIds = { llmModelId: llmLoadedId, embeddingModelId: embeddingLoadedId };
+  return cachedModelIds;
 }

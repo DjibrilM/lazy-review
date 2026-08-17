@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
 export function chunkText(text: string, maxChunkSize = 1000): string[] {
   const lines = text.split('\n');
   const chunks: string[] = [];
@@ -150,6 +154,83 @@ export function extractJson(text: string): any {
 }
 
 export const createProjectManifestSummary = (facts: any): string => {
+  // Extract scan results from facts
+  const scanResult = facts.scanResult || {};
+  const extractedFacts = facts.extractedFacts || [];
+
+  // Build language distribution from all indexed files
+  const languageDistribution: Record<string, number> = {};
+  const fileTypes: Record<string, number> = {};
+  const allImports: Record<string, number> = {};
+
+  // Process scan results
+  if (scanResult.files) {
+    for (const file of scanResult.files) {
+      const lang = file.language || 'unknown';
+      languageDistribution[lang] = (languageDistribution[lang] || 0) + 1;
+      const ext = path.extname(file.filePath).replace('.', '') || 'no-ext';
+      fileTypes[ext] = (fileTypes[ext] || 0) + 1;
+
+      // Collect imports
+      if (file.imports) {
+        for (const imp of file.imports) {
+          const impName = imp.split('/').pop() || imp;
+          allImports[impName] = (allImports[impName] || 0) + 1;
+        }
+      }
+    }
+  }
+
+  // Process extracted facts for additional metadata
+  const topImports = Object.entries(allImports)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([name, count]) => ({ name, count }));
+
+  // Extract PR info from extracted facts if available
+  const prInfo = extractedFacts.find((f: any) => f.source === 'dependency_graph');
+
+  const langEntries =
+    Object.entries(languageDistribution)
+      .map(([lang, count]) => `${lang}: ${count}`)
+      .join(', ') || 'Unknown';
+
+  const importLines =
+    topImports.map((imp) => `- ${imp.name}: used in ${imp.count} files`).join('\n') ||
+    'No imports tracked';
+
+  const fileTypeLines =
+    Object.entries(fileTypes)
+      .sort((a, b) => b[1] - a[1])
+      .map(([ext, count]) => `- .${ext}: ${count} files`)
+      .join('\n') || 'Unknown';
+
+  const symbolLines =
+    extractedFacts
+      .filter((f: any) => f.source === 'symbol')
+      .slice(0, 10)
+      .map(
+        (f: any) =>
+          `- **${f.kind}**: ${f.symbolName} in ${f.filePath} (lines ${f.startLine}-${f.endLine})`,
+      )
+      .join('\n') || 'No symbols indexed';
+
+  const prSection = prInfo
+    ? `\n**PR Size:** ${prInfo.additions ?? 0} additions, ${prInfo.deletions ?? 0} deletions\n**Files Modified:** ${prInfo.changedFiles ?? 0}`
+    : '';
+
+  const totalSizeKB = (scanResult.totalBytes || 0) / 1024;
+  const sizeDisplay = totalSizeKB.toFixed(1);
+
+  // Build folder structure explanation
+  const folderStructure = buildFolderStructure(scanResult);
+
+  // Build run instructions
+  const runInstructions = buildRunInstructions(facts);
+
+  // Build codebase familiarization guide
+  const familiarization = buildCodebaseFamiliarization(scanResult, extractedFacts);
+
   return `# Project: ${facts.project_name || 'Unknown Project'}
 
 ## Overview
@@ -157,20 +238,188 @@ This is a ${facts.application_type || 'software application'} built using the ${
 
 ${facts.explanation || 'No detailed explanation provided.'}
 
-## Technology Stack
-The core technologies and frameworks used are:
-${(facts.tech_stack || []).map((tech: string) => `- ${tech}`).join('\n')}
+## Codebase Statistics
+- **Total Files:** ${scanResult.totalFiles || 0}
+- **Total Symbols:** ${scanResult.totalSymbols || 0}
+- **Total Size:** ${sizeDisplay} KB
+- **Languages Used:** ${langEntries}
 
-## Core Modules
-${(facts.core_modules || []).map((m: any) => `- **${m.path}**: ${m.desc}`).join('\n')}
+## Entry Points & Key Files
+- **Entry Points:** ${(scanResult.entryPoints || []).join(', ') || 'None identified'}
+- **Entities/Models:** ${(scanResult.entityFiles || []).length} files
+- **API Routes/Controllers:** ${(scanResult.routeFiles || []).length} files
+- **Configuration Files:** ${(scanResult.configFiles || []).length} files
 
-## Key Conventions
-${(facts.key_conventions || []).map((k: string) => `- ${k}`).join('\n')}
+## Top Dependencies
+${importLines}
 
-## Required Secrets & Environment Variables
-${(facts.required_secrets || []).map((s: any) => `- **${s.key}**: ${s.description}`).join('\n')}
+## File Type Distribution
+${fileTypeLines}
+
+## Key Symbols (from indexed content)
+${symbolLines}
+
+## PR Context (if available)
+${prSection}
+
+## Folder Structure
+${folderStructure}
+
+## How to Run
+${runInstructions}
+
+## Codebase Familiarization
+${familiarization}
+
+## Directory Structure
+${scanResult.directorySummary || 'No directory summary available'}
 `;
 };
+
+function buildFolderStructure(scanResult: any): string {
+  const files = scanResult.files || [];
+
+  if (!files.length) return 'No files indexed.';
+
+  // Group files by directory
+  const dirs = new Map<string, string[]>();
+  for (const file of files) {
+    const parts = file.filePath.split('/');
+    const dir = parts.slice(0, -1).join('/') || '.';
+    if (!dirs.has(dir)) dirs.set(dir, []);
+    dirs.get(dir)!.push(file.filePath);
+  }
+
+  const sortedDirs = Array.from(dirs.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+  let structure = '';
+  for (const [dir, files] of sortedDirs) {
+    const relDir = dir || '.';
+    structure += `- **${relDir}/**\n`;
+    for (const f of files.slice(0, 5)) {
+      // Show first 5 files per dir
+      structure += `  - \`${f}\`\n`;
+    }
+    if (files.length > 5) {
+      structure += `  ... and ${files.length - 5} more files\n`;
+    }
+  }
+
+  return structure || 'No folder structure available.';
+}
+
+function buildRunInstructions(facts: any): string {
+  const instructions = [];
+
+  // Check for common run methods
+  if (facts.application_type === 'web application' || facts.application_type === 'website') {
+    instructions.push('- **npm install**: Install dependencies');
+    instructions.push('- **npm run dev** or **npm start**: Start development server');
+    instructions.push('- **Open browser** to http://localhost:3000 or http://localhost:16500');
+  }
+
+  if (facts.application_type === 'api server' || facts.application_type === 'backend') {
+    instructions.push('- **npm install**: Install dependencies');
+    instructions.push('- **npm run dev**: Start the API server');
+    instructions.push(
+      '- **Server will listen** on the configured port (e.g., http://localhost:16500)',
+    );
+  }
+
+  if (facts.required_secrets) {
+    instructions.push(
+      '- **Set required environment variables** as listed in the Required Secrets section',
+    );
+  }
+
+  instructions.push('');
+  instructions.push(
+    "For detailed setup instructions, refer to the project's README and configuration files.",
+  );
+
+  return instructions.join('\n') || 'No run instructions available.';
+}
+
+function buildCodebaseFamiliarization(scanResult: any, extractedFacts: any[]): string {
+  const files = scanResult.files || [];
+
+  if (!files.length) return 'No codebase information available.';
+
+  const sections = [];
+
+  // Key areas of the codebase
+  const entryPoints =
+    (scanResult.entryPoints || []).map((p: string) => `- \`${p}\``).join(', ') || 'None identified';
+  sections.push(`**Entry Points:** ${entryPoints}`);
+
+  // Main modules/files
+  const mainFiles =
+    files
+      .filter((f: { isEntryPoint: boolean }) => f.isEntryPoint)
+      .slice(0, 10)
+      .map(
+        (f: { filePath: string; language: string }) =>
+          `- \`${f.filePath}\` (${f.language || 'unknown'})`,
+      )
+      .join('\n') || 'No entry points identified';
+  sections.push(`**Main Files:**\n${mainFiles}`);
+
+  // Entity/models overview
+  const entities =
+    files
+      .filter((f: { isEntity: boolean }) => f.isEntity)
+      .slice(0, 5)
+      .map((f: { filePath: string }) => `- \`${f.filePath}\` - Data entity/model`)
+      .join('\n') || 'No entities identified';
+  sections.push(`**Data Entities/Models:**\n${entities}`);
+
+  // API routes overview
+  const routes =
+    files
+      .filter((f: { isRoute: boolean }) => f.isRoute)
+      .slice(0, 5)
+      .map((f: { filePath: string }) => `- \`${f.filePath}\` - API route/controller`)
+      .join('\n') || 'No routes identified';
+  sections.push(`**API Routes/Controllers:**\n${routes}`);
+
+  // Key symbols overview
+  const symbols =
+    extractedFacts
+      .filter((f: { source: string }) => f.source === 'symbol')
+      .slice(0, 10)
+      .map(
+        (f: {
+          kind: string;
+          symbolName: string;
+          filePath: string;
+          startLine: number;
+          endLine: number;
+        }) =>
+          `- **${f.kind}**: ${f.symbolName} in ${f.filePath} (lines ${f.startLine}-${f.endLine})`,
+      )
+      .join('\n') || 'No symbols indexed';
+  sections.push(`**Key Symbols:**\n${symbols}`);
+
+  // Top imports
+  const allImports: Record<string, number> = {};
+  for (const file of files) {
+    if (file.imports) {
+      for (const imp of file.imports) {
+        const impName = imp.split('/').pop() || imp;
+        allImports[impName] = (allImports[impName] || 0) + 1;
+      }
+    }
+  }
+  const topImports =
+    Object.entries(allImports)
+      .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]: [string, number]) => `- \`${name}\` (in ${count} files)`)
+      .join('\n') || 'No imports tracked';
+  sections.push(`**Top Imports:**\n${topImports}`);
+
+  return sections.join('\n\n') || 'No codebase familiarization information available.';
+}
 
 export function parseDiff(diffString: string): { file: string; diff: string }[] {
   const files: { file: string; diff: string }[] = [];
@@ -202,4 +451,18 @@ export function parseDiff(diffString: string): { file: string; diff: string }[] 
   }
 
   return files;
+}
+
+export function purgeQvacKvCache(): boolean {
+  try {
+    const cacheDir = path.join(os.homedir(), '.qvac', 'kv-cache');
+    if (fs.existsSync(cacheDir)) {
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+      console.log('Cleared QVAC KV cache directory:', cacheDir);
+      return true;
+    }
+  } catch (err) {
+    console.error('Failed to purge QVAC KV cache:', err);
+  }
+  return false;
 }

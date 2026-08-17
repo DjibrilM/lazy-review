@@ -345,15 +345,35 @@ class GithubModule {
     event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
     comments?: { path: string; position?: number; line?: number; body: string }[];
   }) {
-    const { data } = await this.octokit.rest.pulls.createReview({
-      owner,
-      repo,
-      pull_number,
-      body,
-      event,
-      comments: comments || [],
-    });
-    return { data };
+    try {
+      const { data } = await this.octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number,
+        body,
+        event,
+        comments: comments || [],
+      });
+      return { data };
+    } catch (error: any) {
+      if (
+        error.status === 422 &&
+        (error.message?.includes('Can not request changes on your own pull request') ||
+          error.message?.includes('Can not approve your own pull request'))
+      ) {
+        console.warn(`Cannot ${event} on own pull request. Falling back to COMMENT event.`);
+        const { data } = await this.octokit.rest.pulls.createReview({
+          owner,
+          repo,
+          pull_number,
+          body,
+          event: 'COMMENT',
+          comments: comments || [],
+        });
+        return { data };
+      }
+      throw error;
+    }
   }
 }
 
