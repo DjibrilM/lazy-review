@@ -30,8 +30,8 @@ export function AIReviewSessionDialog({
             
             <p className="text-sm text-muted-foreground">
               {prToOpen.hasExistingReview 
-                ? "An active AI review session exists for this pull request. Would you like to continue from where you left off or start fresh?"
-                : "No active review session found. The AI will fetch the latest diff and initialize the context envelope against the local codebase."}
+                ? "An active AI review session exists for this pull request. You can continue from where you left off or start a fresh review."
+                : "No existing review found for this pull request. Start a new AI review session to analyze the changes."}
             </p>
 
             <div className="flex flex-col space-y-3 pt-2">
@@ -42,7 +42,7 @@ export function AIReviewSessionDialog({
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     <Play className="w-4 h-4 mr-2" />
-                    Continue Existing Review
+                    Continue Review
                   </Button>
                   <Button 
                     variant="outline"
@@ -50,7 +50,7 @@ export function AIReviewSessionDialog({
                     className="w-full"
                   >
                     <Bot className="w-4 h-4 mr-2" />
-                    Start Fresh Review
+                    Start New Review
                   </Button>
                 </>
               ) : (
@@ -59,7 +59,7 @@ export function AIReviewSessionDialog({
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Play className="w-4 h-4 mr-2" />
-                  Initialize AI Review
+                  Start Review
                 </Button>
               )}
             </div>

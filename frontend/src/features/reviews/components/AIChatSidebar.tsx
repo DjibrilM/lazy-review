@@ -1,19 +1,18 @@
 import {
   AlertCircle,
-  BrainCircuit,
-  ChevronDown,
-  ChevronRight,
-  GitFork,
   Loader2,
   MessageSquareMore,
   Send,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/util/shared';
 import { normalizeReasoningMarkers } from '@/lib/util/chat-markers';
 import type { ChatMessage } from '../hooks/useChat';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { parseMessageContent } from '../utils/chat-parser';
+import { AnimatedThought } from './AnimatedThought';
+import { AgentConfirmationRequest } from './AgentConfirmationRequest';
 
 interface AIChatSidebarProps {
   messages: ChatMessage[];
@@ -29,130 +28,7 @@ interface AIChatSidebarProps {
   onFileClick?: (fileName: string) => void;
 }
 
-type MessagePart =
-  | { type: 'text'; content: string }
-  | { type: 'think'; content: string; complete: boolean };
 
-/**
- * Parses both the normal  thinking... response format, the alternate thought
- * channel markers used by some models, and the explicit <thinking> tags
- * emitted by the backend chat agent.
- *
- * An unfinished thinking block is marked complete=false so the UI knows it is
- * still actively streaming.
- */
-function parseMessageContent(content: string): MessagePart[] {
-  console.log('🔥 ACTUAL PARSER CALLED');
-
-  const parts: MessagePart[] = [];
-  let cursor = 0;
-
-  while (cursor < content.length) {
-    const thinkStart = content.indexOf('<think>', cursor);
-    const channelStart = content.indexOf('<|channel>thought', cursor);
-
-    console.log('PARSER STATE', {
-      cursor,
-      thinkStart,
-      channelStart,
-      hasChannel: content.includes('<|channel>thought'),
-      content: JSON.stringify(content),
-    });
-
-    const candidates = [
-      thinkStart >= 0
-        ? {
-          index: thinkStart,
-          start: '<think>',
-          end: '</think>',
-        }
-        : null,
-
-      channelStart >= 0
-        ? {
-          index: channelStart,
-          start: '<|channel>thought',
-          end: '<channel|>',
-        }
-        : null,
-    ].filter(Boolean) as {
-      index: number;
-      start: string;
-      end: string;
-    }[];
-
-    console.log('CANDIDATES', candidates);
-
-    if (candidates.length === 0) {
-      console.log('❌ ENTERED TEXT FALLBACK');
-
-      const text = content.slice(cursor);
-
-      if (text) {
-        parts.push({
-          type: 'text',
-          content: text,
-        });
-      }
-
-      break;
-    }
-
-    const marker = candidates.sort(
-      (a, b) => a.index - b.index,
-    )[0];
-
-    console.log('MARKER', marker);
-
-    if (marker.index > cursor) {
-      parts.push({
-        type: 'text',
-        content: content.slice(cursor, marker.index),
-      });
-    }
-
-    const thoughtStart =
-      marker.index + marker.start.length;
-
-    const thoughtEnd = content.indexOf(
-      marker.end,
-      thoughtStart,
-    );
-
-    console.log('THOUGHT', {
-      thoughtStart,
-      thoughtEnd,
-      endMarker: marker.end,
-    });
-
-    if (thoughtEnd === -1) {
-      parts.push({
-        type: 'think',
-        content: content.slice(thoughtStart),
-        complete: false,
-      });
-
-      break;
-    }
-
-    parts.push({
-      type: 'think',
-      content: content.slice(
-        thoughtStart,
-        thoughtEnd,
-      ),
-      complete: true,
-    });
-
-    cursor = thoughtEnd + marker.end.length;
-  }
-
-  console.log('🔥 FINAL PARTS', parts);
-
-  return parts.filter(
-    (part) => part.content.length > 0,
-  );
-}
 
 function ThinkingPlaceholder() {
   return (
@@ -163,173 +39,7 @@ function ThinkingPlaceholder() {
   );
 }
 
-function AnimatedThought({
-  content,
-  isActive,
-}: {
-  content: string;
-  isActive: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(isActive);
-  const manuallyToggled = useRef(false);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (isActive) {
-      manuallyToggled.current = false;
-      setIsOpen(true);
-      return;
-    }
-
-    // As soon as thinking finishes, automatically collapse it.
-    if (!manuallyToggled.current) {
-      setIsOpen(false);
-    }
-  }, [isActive]);
-
-  useEffect(() => {
-    if (isActive && isOpen && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [content, isActive, isOpen]);
-
-  return (
-    <div className="my-1.5 overflow-hidden rounded-md border border-border/60 bg-muted/20">
-      <button
-        type="button"
-        onClick={() => {
-          manuallyToggled.current = true;
-          setIsOpen((value) => !value);
-        }}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
-      >
-        {isActive ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <BrainCircuit className="h-3 w-3" />
-        )}
-
-        <span>{isActive ? 'Thinking' : 'Reasoning'}</span>
-
-        {isActive && (
-          <span className="ml-0.5 font-normal text-muted-foreground/60">live</span>
-        )}
-
-        {isOpen ? (
-          <ChevronDown className="ml-auto h-3 w-3" />
-        ) : (
-          <ChevronRight className="ml-auto h-3 w-3" />
-        )}
-      </button>
-
-      <div
-        className={cn(
-          'grid transition-[grid-template-rows,opacity] duration-200 ease-out',
-          isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div
-            ref={scrollRef}
-            className="overflow-y-auto border-t border-border/50 px-2.5 py-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap"
-          >
-            {content}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AgentConfirmationRequest({
-  msg,
-  setMessages,
-}: {
-  msg: ChatMessage;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-}) {
-  const [decision, setDecision] = useState<'approve' | 'reject' | null>(null);
-
-  if (!msg.agentConfirmationData) return null;
-
-  const respond = async (approved: boolean) => {
-    if (decision) return;
-
-    setDecision(approved ? 'approve' : 'reject');
-
-    try {
-      const { activeSocket } = await import('@/components/providers/SocketProvider');
-
-      activeSocket?.emit('agent-confirmation-response', {
-        id: msg.agentConfirmationData!.id,
-        approved,
-      });
-
-      setMessages((previous) =>
-        previous.map((message) =>
-          message.id === msg.id
-            ? { ...message, requiresConfirmation: undefined }
-            : message,
-        ),
-      );
-    } catch {
-      setDecision(null);
-    }
-  };
-
-  return (
-    <div className="mt-2.5 overflow-hidden rounded-lg border border-border/70 bg-card">
-      <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
-          <GitFork className="h-3.5 w-3.5" />
-        </div>
-
-        <div className="min-w-0">
-          <div className="text-[11px] font-semibold text-foreground">
-            GitHub action requires approval
-          </div>
-          <div className="text-[10px] text-muted-foreground">
-            Nothing will be sent until you approve.
-          </div>
-        </div>
-      </div>
-
-      <div className="px-3 py-2.5 text-xs leading-5 text-foreground/90 [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:my-1 [&_pre]:text-[11px]">
-        <div className="whitespace-pre-wrap text-[11px] leading-4 text-foreground/80">
-          {msg.agentConfirmationData.action.title}
-          {msg.agentConfirmationData.action.description
-            ? `\n\n${msg.agentConfirmationData.action.description}`
-            : ''}
-        </div>
-      </div>
-
-      <div className="flex gap-2 border-t border-border/60 bg-muted/15 px-3 py-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => respond(true)}
-          disabled={decision !== null}
-          className="h-7 flex-1 text-[11px]"
-        >
-          {decision === 'approve' && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}
-          Approve & send
-        </Button>
-
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => respond(false)}
-          disabled={decision !== null}
-          className="h-7 flex-1 text-[11px]"
-        >
-          {decision === 'reject' && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 export function AIChatSidebar({
   messages,
