@@ -182,6 +182,6 @@ export function useRepository(id: string | undefined) {
     handleReindex,
     handleCancelIndexing,
     handleDeleteProject,
-    setIndexingError
+    setIndexingError,
   };
 }

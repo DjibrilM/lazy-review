@@ -76,7 +76,11 @@ export function buildMarkdown(facts: CodebaseFacts) {
         }
 
         if (flow.steps?.length) {
-          lines.push(...flow.steps.map((step, index) => `${index + 1}. **${step.component}** — ${step.action}`));
+          lines.push(
+            ...flow.steps.map(
+              (step, index) => `${index + 1}. **${step.component}** — ${step.action}`,
+            ),
+          );
         }
 
         lines.push(formatEvidence(flow.evidence));
@@ -90,7 +94,9 @@ export function buildMarkdown(facts: CodebaseFacts) {
 
   // Technology
   if (facts.tech_stack?.length) {
-    sections.push(markdownSection('Technology Stack', facts.tech_stack.map((tech) => `- ${tech}`).join('\n')));
+    sections.push(
+      markdownSection('Technology Stack', facts.tech_stack.map((tech) => `- ${tech}`).join('\n')),
+    );
   }
 
   // Core modules
@@ -100,7 +106,12 @@ export function buildMarkdown(facts: CodebaseFacts) {
         const lines = [`### \`${module.path}\``, '', module.desc];
 
         if (module.responsibilities?.length) {
-          lines.push('', '**Responsibilities**', '', ...module.responsibilities.map((item) => `- ${item}`));
+          lines.push(
+            '',
+            '**Responsibilities**',
+            '',
+            ...module.responsibilities.map((item) => `- ${item}`),
+          );
         }
 
         if (module.depends_on?.length) {
@@ -146,7 +157,12 @@ export function buildMarkdown(facts: CodebaseFacts) {
         const lines = [`### ${channel.mechanism}`, '', channel.purpose];
 
         if (channel.important_events_or_routes?.length) {
-          lines.push('', '**Important events / routes**', '', ...channel.important_events_or_routes.map((item) => `- \`${item}\``));
+          lines.push(
+            '',
+            '**Important events / routes**',
+            '',
+            ...channel.important_events_or_routes.map((item) => `- \`${item}\``),
+          );
         }
 
         lines.push(formatEvidence(channel.evidence));
@@ -165,7 +181,10 @@ export function buildMarkdown(facts: CodebaseFacts) {
         const lines = [`### ${concept.name}`, '', concept.description];
 
         if (concept.related_modules?.length) {
-          lines.push('', `**Related modules:** ${concept.related_modules.map((module) => `\`${module}\``).join(', ')}`);
+          lines.push(
+            '',
+            `**Related modules:** ${concept.related_modules.map((module) => `\`${module}\``).join(', ')}`,
+          );
         }
 
         lines.push(formatEvidence(concept.evidence));
@@ -210,17 +229,34 @@ export function buildMarkdown(facts: CodebaseFacts) {
 
   // Conventions
   if (facts.key_conventions?.length) {
-    sections.push(markdownSection('Key Conventions', facts.key_conventions.map((convention) => `- ${convention}`).join('\n')));
+    sections.push(
+      markdownSection(
+        'Key Conventions',
+        facts.key_conventions.map((convention) => `- ${convention}`).join('\n'),
+      ),
+    );
   }
 
   // Environment
   if (facts.required_secrets?.length) {
-    sections.push(markdownSection('Environment Variables', facts.required_secrets.map((secret) => `- **${secret.key}** — ${secret.description}`).join('\n')));
+    sections.push(
+      markdownSection(
+        'Environment Variables',
+        facts.required_secrets
+          .map((secret) => `- **${secret.key}** — ${secret.description}`)
+          .join('\n'),
+      ),
+    );
   }
 
   // Unknowns
   if (facts.known_unknowns?.length) {
-    sections.push(markdownSection('Unresolved Questions', facts.known_unknowns.map((unknown) => `- ${unknown}`).join('\n')));
+    sections.push(
+      markdownSection(
+        'Unresolved Questions',
+        facts.known_unknowns.map((unknown) => `- ${unknown}`).join('\n'),
+      ),
+    );
   }
 
   return sections.filter(Boolean).join('\n');
