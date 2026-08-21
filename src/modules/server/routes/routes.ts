@@ -4,6 +4,7 @@ import GithubRoutes from './github.routes.js';
 import QvacRoutes from './qvac.routes.js';
 import { SettingsController } from './settings.controller.js';
 import { SettingsService } from '../services/settings.service.js';
+import { AuthRoutes } from './auth.routes.js';
 import { MainModule } from '../../main.module.js';
 
 class Routes {
@@ -12,6 +13,7 @@ class Routes {
   githubRoutes: GithubRoutes;
   qvacRoutes: QvacRoutes;
   settingsController: SettingsController;
+  authRoutes: AuthRoutes;
   mainModule: MainModule;
 
   constructor(app: Express, mainModule: MainModule) {
@@ -26,6 +28,7 @@ class Routes {
       this.mainModule,
     );
     this.settingsController = new SettingsController(settingsService);
+    this.authRoutes = new AuthRoutes(this.mainModule.database.appDataSource, this.mainModule);
   }
 
   init() {
@@ -34,6 +37,7 @@ class Routes {
     this.qvacRoutes.init();
 
     this.app.use('/settings', this.settingsController.router);
+    this.app.use('/auth/github', this.authRoutes.router);
   }
 }
 

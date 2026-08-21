@@ -9,6 +9,7 @@ const REVIEW_TIMEOUT_MS = 600_000; // 10 min for CPU inference
 export abstract class BaseAgent {
   /** Cache loaded model IDs to avoid re-loading on every request */
   private static cachedModelIds: { llmId: string; embeddingId: string } | null = null;
+  protected static currentDevice: string | null = null;
 
   constructor(protected mainModule: MainModule) {}
 
@@ -26,6 +27,7 @@ export abstract class BaseAgent {
     }
     const useGpu = Boolean(settings.useExperimentalGpu);
     const deviceConfig = useGpu ? undefined : 'cpu';
+    BaseAgent.currentDevice = useGpu ? 'GPU' : 'CPU';
 
     const LLM_CTX_SIZE = 128000;
     let llmId: string = (qvacModels as any)[LLM_MODEL_ID]?.modelId ?? LLM_MODEL_ID;
@@ -77,6 +79,9 @@ export abstract class BaseAgent {
   }
 
   protected awaitCompletion(run: { requestId: string; final: Promise<any> }): Promise<any> {
+    console.log(
+      `[LLM] Executing completion call on device: ${BaseAgent.currentDevice || 'unknown'}`,
+    );
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error(`LLM timed out after ${REVIEW_TIMEOUT_MS / 1000}s`)),

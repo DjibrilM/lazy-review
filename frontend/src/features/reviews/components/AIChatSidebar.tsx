@@ -1,573 +1,331 @@
 import {
-  AlertCircle,
-  BrainCircuit,
-  ChevronDown,
-  ChevronRight,
-  GitFork,
-  Loader2,
-  MessageSquareMore,
-  Send,
+    AlertCircle,
+    Loader2,
+    MessageSquareMore,
+    Send,
+    Copy,
+    Check,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/util/shared';
 import { normalizeReasoningMarkers } from '@/lib/util/chat-markers';
 import type { ChatMessage } from '../hooks/useChat';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { parseMessageContent } from '../utils/chat-parser';
+import { AnimatedThought } from './AnimatedThought';
+import { AgentConfirmationRequest } from './AgentConfirmationRequest';
+import Visible from "@/components/common/Visible";
 
 interface AIChatSidebarProps {
-  messages: ChatMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  input: string;
-  setInput: (value: string) => void;
-  isChatLoading: boolean;
-  handleSend: () => void;
-  reviewStatus: 'idle' | 'running' | 'success' | 'error';
-  reviewMessage: string;
-  chatEndRef: React.RefObject<HTMLDivElement | null>;
-  changedFiles?: string[];
-  onFileClick?: (fileName: string) => void;
+    messages: ChatMessage[];
+    setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+    input: string;
+    setInput: (value: string) => void;
+    isChatLoading: boolean;
+    handleSend: () => void;
+    reviewStatus: 'idle' | 'running' | 'success' | 'error';
+    reviewMessage: string;
+    chatEndRef: React.RefObject<HTMLDivElement | null>;
+    changedFiles?: string[];
+    onFileClick?: (fileName: string) => void;
 }
 
-type MessagePart =
-  | { type: 'text'; content: string }
-  | { type: 'think'; content: string; complete: boolean };
 
-/**
- * Parses both the normal  thinking... response format, the alternate thought
- * channel markers used by some models, and the explicit <thinking> tags
- * emitted by the backend chat agent.
- *
- * An unfinished thinking block is marked complete=false so the UI knows it is
- * still actively streaming.
- */
-function parseMessageContent(content: string): MessagePart[] {
-  console.log('🔥 ACTUAL PARSER CALLED');
 
-  const parts: MessagePart[] = [];
-  let cursor = 0;
+function CopyButton({ text, isUser }: { text: string; isUser?: boolean }) {
+    const [copied, setCopied] = useState(false);
 
-  while (cursor < content.length) {
-    const thinkStart = content.indexOf('<think>', cursor);
-    const channelStart = content.indexOf('<|channel>thought', cursor);
+    const handleCopy = () => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
 
-    console.log('PARSER STATE', {
-      cursor,
-      thinkStart,
-      channelStart,
-      hasChannel: content.includes('<|channel>thought'),
-      content: JSON.stringify(content),
-    });
-
-    const candidates = [
-      thinkStart >= 0
-        ? {
-          index: thinkStart,
-          start: '<think>',
-          end: '</think>',
-        }
-        : null,
-
-      channelStart >= 0
-        ? {
-          index: channelStart,
-          start: '<|channel>thought',
-          end: '<channel|>',
-        }
-        : null,
-    ].filter(Boolean) as {
-      index: number;
-      start: string;
-      end: string;
-    }[];
-
-    console.log('CANDIDATES', candidates);
-
-    if (candidates.length === 0) {
-      console.log('❌ ENTERED TEXT FALLBACK');
-
-      const text = content.slice(cursor);
-
-      if (text) {
-        parts.push({
-          type: 'text',
-          content: text,
-        });
-      }
-
-      break;
-    }
-
-    const marker = candidates.sort(
-      (a, b) => a.index - b.index,
-    )[0];
-
-    console.log('MARKER', marker);
-
-    if (marker.index > cursor) {
-      parts.push({
-        type: 'text',
-        content: content.slice(cursor, marker.index),
-      });
-    }
-
-    const thoughtStart =
-      marker.index + marker.start.length;
-
-    const thoughtEnd = content.indexOf(
-      marker.end,
-      thoughtStart,
+    return (
+        <button
+            onClick={handleCopy}
+            className={cn(
+                "flex items-center gap-1.5 text-[10px] transition-colors",
+                isUser ? "text-background/70 hover:text-background" : "text-muted-foreground hover:text-foreground"
+            )}
+            title="Copy message"
+        >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        </button>
     );
-
-    console.log('THOUGHT', {
-      thoughtStart,
-      thoughtEnd,
-      endMarker: marker.end,
-    });
-
-    if (thoughtEnd === -1) {
-      parts.push({
-        type: 'think',
-        content: content.slice(thoughtStart),
-        complete: false,
-      });
-
-      break;
-    }
-
-    parts.push({
-      type: 'think',
-      content: content.slice(
-        thoughtStart,
-        thoughtEnd,
-      ),
-      complete: true,
-    });
-
-    cursor = thoughtEnd + marker.end.length;
-  }
-
-  console.log('🔥 FINAL PARTS', parts);
-
-  return parts.filter(
-    (part) => part.content.length > 0,
-  );
 }
 
 function ThinkingPlaceholder() {
-  return (
-    <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
-      <Loader2 className="h-3 w-3 animate-spin" />
-      <span>Thinking…</span>
-    </div>
-  );
+    return (
+        <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Thinking…</span>
+        </div>
+    );
 }
 
-function AnimatedThought({
-  content,
-  isActive,
-}: {
-  content: string;
-  isActive: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(isActive);
-  const manuallyToggled = useRef(false);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (isActive) {
-      manuallyToggled.current = false;
-      setIsOpen(true);
-      return;
-    }
-
-    // As soon as thinking finishes, automatically collapse it.
-    if (!manuallyToggled.current) {
-      setIsOpen(false);
-    }
-  }, [isActive]);
-
-  useEffect(() => {
-    if (isActive && isOpen && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [content, isActive, isOpen]);
-
-  return (
-    <div className="my-1.5 overflow-hidden rounded-md border border-border/60 bg-muted/20">
-      <button
-        type="button"
-        onClick={() => {
-          manuallyToggled.current = true;
-          setIsOpen((value) => !value);
-        }}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
-      >
-        {isActive ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <BrainCircuit className="h-3 w-3" />
-        )}
-
-        <span>{isActive ? 'Thinking' : 'Reasoning'}</span>
-
-        {isActive && (
-          <span className="ml-0.5 font-normal text-muted-foreground/60">live</span>
-        )}
-
-        {isOpen ? (
-          <ChevronDown className="ml-auto h-3 w-3" />
-        ) : (
-          <ChevronRight className="ml-auto h-3 w-3" />
-        )}
-      </button>
-
-      <div
-        className={cn(
-          'grid transition-[grid-template-rows,opacity] duration-200 ease-out',
-          isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div
-            ref={scrollRef}
-            className="overflow-y-auto border-t border-border/50 px-2.5 py-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap"
-          >
-            {content}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AgentConfirmationRequest({
-  msg,
-  setMessages,
-}: {
-  msg: ChatMessage;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-}) {
-  const [decision, setDecision] = useState<'approve' | 'reject' | null>(null);
-
-  if (!msg.agentConfirmationData) return null;
-
-  const respond = async (approved: boolean) => {
-    if (decision) return;
-
-    setDecision(approved ? 'approve' : 'reject');
-
-    try {
-      const { activeSocket } = await import('@/components/providers/SocketProvider');
-
-      activeSocket?.emit('agent-confirmation-response', {
-        id: msg.agentConfirmationData!.id,
-        approved,
-      });
-
-      setMessages((previous) =>
-        previous.map((message) =>
-          message.id === msg.id
-            ? { ...message, requiresConfirmation: undefined }
-            : message,
-        ),
-      );
-    } catch {
-      setDecision(null);
-    }
-  };
-
-  return (
-    <div className="mt-2.5 overflow-hidden rounded-lg border border-border/70 bg-card">
-      <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
-          <GitFork className="h-3.5 w-3.5" />
-        </div>
-
-        <div className="min-w-0">
-          <div className="text-[11px] font-semibold text-foreground">
-            GitHub action requires approval
-          </div>
-          <div className="text-[10px] text-muted-foreground">
-            Nothing will be sent until you approve.
-          </div>
-        </div>
-      </div>
-
-      <div className="px-3 py-2.5 text-xs leading-5 text-foreground/90 [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_p]:my-1 [&_pre]:text-[11px]">
-        <div className="whitespace-pre-wrap text-[11px] leading-4 text-foreground/80">
-          {msg.agentConfirmationData.action.title}
-          {msg.agentConfirmationData.action.description
-            ? `\n\n${msg.agentConfirmationData.action.description}`
-            : ''}
-        </div>
-      </div>
-
-      <div className="flex gap-2 border-t border-border/60 bg-muted/15 px-3 py-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => respond(true)}
-          disabled={decision !== null}
-          className="h-7 flex-1 text-[11px]"
-        >
-          {decision === 'approve' && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}
-          Approve & send
-        </Button>
-
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => respond(false)}
-          disabled={decision !== null}
-          className="h-7 flex-1 text-[11px]"
-        >
-          {decision === 'reject' && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 export function AIChatSidebar({
-  messages,
-  setMessages,
-  input,
-  setInput,
-  isChatLoading,
-  handleSend,
-  reviewStatus,
-  reviewMessage,
-  chatEndRef,
-  changedFiles,
-  onFileClick,
+    messages,
+    setMessages,
+    input,
+    setInput,
+    isChatLoading,
+    handleSend,
+    reviewStatus,
+    reviewMessage,
+    chatEndRef,
+    changedFiles,
+    onFileClick,
 }: AIChatSidebarProps) {
-  const parsedMessages = useMemo(
-    () =>
-      messages.map((message) => ({
-        message,
-        parts: parseMessageContent(normalizeReasoningMarkers(message.content ?? '')),
-      })),
-    [messages],
-  );
+    const parsedMessages = useMemo(
+        () =>
+            messages.map((message) => ({
+                message,
+                parts: parseMessageContent(normalizeReasoningMarkers(message.content ?? '')),
+            })),
+        [messages],
+    );
 
-  const lastMessage = messages[messages.length - 1];
+    const lastMessage = messages[messages.length - 1];
 
-  // This is the zero-token state: the user has sent a request but the model has
-  // not emitted reasoning/content yet.
-  const waitingForFirstToken =
-    isChatLoading &&
-    (!lastMessage ||
-      lastMessage.role === 'user' ||
-      (lastMessage.role === 'assistant' &&
-        !lastMessage.content?.trim() &&
-        lastMessage.requiresConfirmation !== 'agent_confirmation'));
-
-
-
-  const test =
-    '<|channel>thought\n' +
-    'The user is just saying "hey" again. Since there is no specific request, ' +
-    'I should prompt them to give me a task.' +
-    "<channel|>Hello! Let me know what you'd like me to look at.";
-
-  console.log('PARSER TEST:', parseMessageContent(test));
-
-  const marker = '<|channel>thought';
-
-  console.log('TEST:', JSON.stringify(test));
-  console.log('MARKER:', JSON.stringify(marker));
-
-  console.log('includes:', test.includes(marker));
-  console.log('indexOf:', test.indexOf(marker));
-
-  console.log(
-    'test chars:',
-    [...test.slice(0, marker.length)].map((char) => ({
-      char,
-      code: char.charCodeAt(0),
-    })),
-  );
-
-  console.log(
-    'marker chars:',
-    [...marker].map((char) => ({
-      char,
-      code: char.charCodeAt(0),
-    })),
-  );
-
-  console.log('PARSER TEST:', parseMessageContent(test));
-
-  return (
-    <div className="relative z-10 flex h-full w-full min-w-[300px] flex-col bg-background">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border/70 px-3">
-        <MessageSquareMore className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-[11px] font-semibold tracking-wide text-foreground/90">
-          Interactive Review Architect
-        </span>
-      </div>
-
-      <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
-        {parsedMessages.map(({ message: msg, parts }) => {
-          console.log(msg, 'message')
-          const isUser = msg.role === 'user';
-          const isSystem = msg.role === 'system';
+    // This is the zero-token state: the user has sent a request but the model has
+    // not emitted reasoning/content yet.
+    const waitingForFirstToken =
+        isChatLoading &&
+        (!lastMessage ||
+            lastMessage.role === 'user' ||
+            (lastMessage.role === 'assistant' &&
+                !lastMessage.content?.trim() &&
+                lastMessage.requiresConfirmation !== 'agent_confirmation'));
 
 
 
-          return (
-            <div
-              key={msg.id}
-              className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}
-            >
-              <div
-                className={cn(
-                  'min-w-0 max-w-[92%]',
-                  isUser &&
-                  'rounded-xl rounded-br-sm bg-foreground px-3 py-2 text-background',
-                  isSystem &&
-                  'rounded-md border border-border/60 bg-muted/25 px-2.5 py-2 text-muted-foreground',
-                )}
-              >
-                <div className="space-y-1.5">
-                  {parts.map((part, index) => {
+    const test =
+        '<|channel>thought\n' +
+        'The user is just saying "hey" again. Since there is no specific request, ' +
+        'I should prompt them to give me a task.' +
+        "<channel|>Hello! Let me know what you'd like me to look at.";
+
+    console.log('PARSER TEST:', parseMessageContent(test));
+
+    const marker = '<|channel>thought';
+
+    console.log('TEST:', JSON.stringify(test));
+    console.log('MARKER:', JSON.stringify(marker));
+
+    console.log('includes:', test.includes(marker));
+    console.log('indexOf:', test.indexOf(marker));
+
+    console.log(
+        'test chars:',
+        [...test.slice(0, marker.length)].map((char) => ({
+            char,
+            code: char.charCodeAt(0),
+        })),
+    );
+
+    console.log(
+        'marker chars:',
+        [...marker].map((char) => ({
+            char,
+            code: char.charCodeAt(0),
+        })),
+    );
+
+    console.log('PARSER TEST:', parseMessageContent(test));
+
+    return (
+        <div className="relative z-10 flex h-full w-full min-w-[300px] flex-col bg-background">
+            <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border/70 px-3">
+                <MessageSquareMore className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-[11px] font-semibold tracking-wide text-foreground/90">
+                    Interactive Review Architect
+                </span>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+                {parsedMessages.map(({ message: msg, parts }) => {
+                    console.log(msg, 'message')
+                    const isUser = msg.role === 'user';
+                    const isSystem = msg.role === 'system';
 
 
-                    console.log('🔥 RENDER PART', {
-                      messageId: msg.id,
-                      index,
-                      type: part.type,
-                      content: part.content,
-                      ...(part.type === 'think'
-                        ? { complete: part.complete }
-                        : {}),
-                    });
-
-
-
-
-                    if (part.type === 'think') {
-
-
-                      console.log('🧠 RENDERING AnimatedThought');
-
-
-                      return (
-                        <AnimatedThought
-                          key={`${msg.id}-think-${index}`}
-                          content={part.content}
-                          isActive={!part.complete}
-                        />
-                      );
-                    }
-
-                    if (!part.content.trim()) return null;
-
-                    if (isUser || isSystem) {
-                      return (
-                        <div
-                          key={`${msg.id}-text-${index}`}
-                          className={cn(
-                            'whitespace-pre-wrap text-xs leading-5',
-                            isSystem && 'font-mono text-[10px] leading-4',
-                          )}
-                        >
-                          {part.content}
-                        </div>
-                      );
-                    }
 
                     return (
-                      <div
-                        key={`${msg.id}-text-${index}`}
-                        className="text-xs leading-5 text-foreground/90 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:text-[11px]"
-                      >
-                        <MarkdownRenderer
-                          content={part.content}
-                          changedFiles={changedFiles}
-                          onFileClick={onFileClick}
-                        />
-                      </div>
+                        <div
+                            key={msg.id}
+                            className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}
+                        >
+                            <div
+                                className={cn(
+                                    'min-w-0 max-w-[92%] relative gap-3',
+                                    isUser &&
+                                    'rounded-xl rounded-br-sm bg-foreground px-3 py-2 text-background',
+                                    isSystem &&
+                                    'rounded-md border border-border/60 bg-muted/25 px-2.5 py-2 text-muted-foreground',
+                                    {
+                                        "flex": isUser
+                                    }
+                                )}
+                            >
+                                <div className="flex-1 min-w-0">
+                                    <div className="space-y-1.5">
+                                        {parts.map((part, index) => {
+
+
+                                            console.log('🔥 RENDER PART', {
+                                                messageId: msg.id,
+                                                index,
+                                                type: part.type,
+                                                content: part.content,
+                                                ...(part.type === 'think'
+                                                    ? { complete: part.complete }
+                                                    : {}),
+                                            });
+
+
+
+
+                                            if (part.type === 'think') {
+
+
+                                                console.log('🧠 RENDERING AnimatedThought');
+
+
+                                                return (
+                                                    <AnimatedThought
+                                                        key={`${msg.id}-think-${index}`}
+                                                        content={part.content}
+                                                        isActive={!part.complete}
+                                                    />
+                                                );
+                                            }
+
+                                            if (!part.content.trim()) return null;
+
+                                            if (isUser || isSystem) {
+                                                return (
+                                                    <div
+                                                        key={`${msg.id}-text-${index}`}
+                                                        className={cn(
+                                                            'whitespace-pre-wrap text-xs leading-5',
+                                                            isSystem && 'font-mono text-[10px] leading-4',
+                                                        )}
+                                                    >
+                                                        {part.content}
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <div
+                                                    key={`${msg.id}-text-${index}`}
+                                                    className="text-xs leading-5 text-foreground/90 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:text-[11px]"
+                                                >
+                                                    <MarkdownRenderer
+                                                        content={part.content}
+                                                        changedFiles={changedFiles}
+                                                        onFileClick={onFileClick}
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <Visible visible={msg.requiresConfirmation === 'agent_confirmation'}>
+                                        <AgentConfirmationRequest msg={msg} setMessages={setMessages} />
+                                    </Visible>
+                                </div>
+
+                                {msg.content && msg.content.trim() && !isSystem && (
+                                    <div className="shrink-0 pt-0.5 flex items-start transition-opacity group-hover:opacity-100">
+                                        <CopyButton text={msg.content} isUser={isUser} />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     );
-                  })}
+                })}
+
+                <Visible visible={waitingForFirstToken}>
+                    <ThinkingPlaceholder />
+                </Visible>
+
+                <Visible visible={reviewStatus === 'idle' && messages.length <= 1}>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground/60">
+                        <MessageSquareMore className="h-8 w-8" />
+                        <p className="text-xs text-center px-6 leading-relaxed">
+                            Generate a review first to start interacting with the AI agent.
+                        </p>
+                    </div>
+                </Visible>
+
+                <Visible visible={reviewStatus === 'running' && messages.length <= 1 && !waitingForFirstToken}>
+                    <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Generating review…</span>
+                    </div>
+                </Visible>
+
+                <Visible visible={reviewStatus === 'error'}>
+                    <div className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive">
+                        <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span>{reviewMessage}</span>
+                    </div>
+                </Visible>
+
+                <div ref={chatEndRef} />
+            </div>
+
+            <div className="shrink-0 border-t border-border/70 bg-background p-2.5">
+                <div className="relative flex items-end rounded-lg border border-border/80 bg-card transition-shadow focus-within:ring-1 focus-within:ring-ring">
+                    <textarea
+                        value={input}
+                        onChange={(event) => {
+                            setInput(event.target.value);
+                            event.target.style.height = 'auto';
+                            event.target.style.height = `${Math.min(event.target.scrollHeight + 2, 144)}px`;
+                        }}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+
+                                if (input.trim() && !isChatLoading) {
+                                    handleSend();
+                                }
+
+                                event.currentTarget.style.height = 'auto';
+                            }
+                        }}
+                        placeholder={reviewStatus === 'success' ? "Ask about the PR…" : reviewStatus === 'idle' ? "Generate a review to chat…" : "Wait for review to finish…"}
+                        className="max-h-36 min-h-9 w-full resize-none overflow-y-auto bg-transparent py-2 pl-2.5 pr-9 text-xs leading-5 outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
+                        rows={1}
+                        disabled={isChatLoading || reviewStatus !== 'success'}
+                    />
+
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleSend}
+                        disabled={isChatLoading || !input.trim() || reviewStatus !== 'success'}
+                        className="absolute bottom-0.5 right-0.5 h-8 w-8 text-muted-foreground"
+                    >
+                        <Visible visible={isChatLoading} fallback={(
+                            <Send className="h-3.5 w-3.5" />
+                        )}>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        </Visible>
+                    </Button>
                 </div>
 
-                {msg.requiresConfirmation === 'agent_confirmation' && (
-                  <AgentConfirmationRequest msg={msg} setMessages={setMessages} />
-                )}
-              </div>
+                <div className="mt-1.5 text-center text-[9px] text-muted-foreground/60">
+                    AI can make mistakes. Please verify important information.
+                </div>
             </div>
-          );
-        })}
-
-        {waitingForFirstToken && <ThinkingPlaceholder />}
-
-        {reviewStatus === 'running' && messages.length <= 1 && !waitingForFirstToken && (
-          <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Generating review…</span>
-          </div>
-        )}
-
-        {reviewStatus === 'error' && (
-          <div className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive">
-            <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>{reviewMessage}</span>
-          </div>
-        )}
-
-        <div ref={chatEndRef} />
-      </div>
-
-      <div className="shrink-0 border-t border-border/70 bg-background p-2.5">
-        <div className="relative flex items-end rounded-lg border border-border/80 bg-card transition-shadow focus-within:ring-1 focus-within:ring-ring">
-          <textarea
-            value={input}
-            onChange={(event) => {
-              setInput(event.target.value);
-              event.target.style.height = 'auto';
-              event.target.style.height = `${Math.min(event.target.scrollHeight + 2, 144)}px`;
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-
-                if (input.trim() && !isChatLoading) {
-                  handleSend();
-                }
-
-                event.currentTarget.style.height = 'auto';
-              }
-            }}
-            placeholder="Ask about the PR…"
-            className="max-h-36 min-h-9 w-full resize-none overflow-y-auto bg-transparent py-2 pl-2.5 pr-9 text-xs leading-5 outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
-            rows={1}
-            disabled={isChatLoading}
-          />
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={handleSend}
-            disabled={isChatLoading || !input.trim()}
-            className="absolute bottom-0.5 right-0.5 h-8 w-8 text-muted-foreground"
-          >
-            {isChatLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Send className="h-3.5 w-3.5" />
-            )}
-          </Button>
         </div>
-
-        <div className="mt-1.5 text-center text-[9px] text-muted-foreground/60">
-          Answers grounded in indexed project context
-        </div>
-      </div>
-    </div>
-  );
+    );
 }

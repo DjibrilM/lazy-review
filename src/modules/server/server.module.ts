@@ -49,6 +49,17 @@ export class Server {
 
       this.app.use('/', express.static(clientPath));
 
+      const frontendRoutes = ['/repo/:id', '/repo/:id/review/:prId', '/settings'];
+      frontendRoutes.forEach((route) => {
+        this?.app?.get(route, (req, res, next) => {
+          if (req.headers.accept?.includes('text/html')) {
+            res.sendFile(path.join(clientPath, 'index.html'));
+          } else {
+            next();
+          }
+        });
+      });
+
       this.httpServer = this.app.listen(this.port, () => {
         console.log(
           chalk.green(`[LAZY-REVIEW] Express server listening at `) +

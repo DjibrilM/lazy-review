@@ -4,8 +4,8 @@ import GithubModule from '../../github/github.module.js';
 class GithubServices {
   githubModule: GithubModule;
 
-  constructor() {
-    this.githubModule = new GithubModule();
+  constructor(githubModule: GithubModule) {
+    this.githubModule = githubModule;
   }
 
   async getUserRepositories({ page = 1 }: { page?: number }) {

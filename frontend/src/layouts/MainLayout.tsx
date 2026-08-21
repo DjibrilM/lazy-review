@@ -1,6 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Header } from './Header';
-import { AgentConfirmationModal } from '../components/agent/AgentConfirmationModal';
 import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
 import { useSetup } from '../components/providers/SetupProvider';
 import { AlertCircle } from 'lucide-react';
@@ -38,7 +37,6 @@ const MainLayout = () => {
       <main className="flex-1 h-full">
         <Outlet />
       </main>
-      <AgentConfirmationModal />
     </div>
   );
 };

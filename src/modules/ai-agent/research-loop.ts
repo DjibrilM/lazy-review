@@ -94,7 +94,7 @@ function parseFallbackToolCalls(rawText: string): ParsedToolCall[] {
       }
     }
 
-    const toolCallRegex = /<\|tool_call\|>?:?call:([a-zA-Z0-9_-]+)\{(.*?)\}/g;
+    const toolCallRegex = /<\|tool_call\|?>?\s*:?\s*(?:call\s*:\s*)?([a-zA-Z0-9_-]+)\{(.*?)\}/g;
 
     let toolMatch: RegExpExecArray | null;
 

@@ -6,6 +6,7 @@ import type { MainModule } from '../main.module.js';
 
 /** Cache loaded model IDs to avoid re-loading on every indexing run */
 let cachedModelIds: { llmModelId: string; embeddingModelId: string } | null = null;
+export let currentDeviceConfig: string | null = null;
 
 export async function loadAIModels(mainModule: MainModule, activeRequestIds: Set<string>) {
   // Return cached IDs if available - loading models is expensive
@@ -30,6 +31,7 @@ export async function loadAIModels(mainModule: MainModule, activeRequestIds: Set
 
   const useGpu = Boolean(settings.useExperimentalGpu);
   const deviceConfig = useGpu ? undefined : 'cpu';
+  currentDeviceConfig = useGpu ? 'GPU' : 'CPU';
 
   console.log(
     `Using device: ${useGpu ? 'gpu (Metal/CUDA)' : 'cpu'} (useExperimentalGpu=${useGpu})`,

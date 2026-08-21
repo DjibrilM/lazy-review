@@ -25,4 +25,7 @@ export default class SettingsEntity {
 
   @Column({ default: 128000 })
   contextSizeLimit: number;
+
+  @Column({ type: 'text', nullable: true })
+  githubToken?: string | null;
 }

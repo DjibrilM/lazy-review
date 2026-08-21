@@ -90,6 +90,19 @@ export default class SocketModule {
     });
   }
 
+  /**
+   * Request a tool confirmation from a specific socket and wait for the user's
+   * reply. The tool handler uses this to gate mutation actions (e.g. posting a
+   * PR comment) behind explicit user approval. Returns true if approved, false
+   * if rejected or timed out.
+   */
+  requestToolConfirmation(
+    socketId: string,
+    confirmation: AgentConfirmationRequest,
+  ): Promise<boolean> {
+    return this.requestConfirmation(socketId, confirmation);
+  }
+
   emitProjectCreationLog(log: any) {
     this.io.emit('project_creation_log', log);
   }

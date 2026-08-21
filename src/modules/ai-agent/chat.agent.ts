@@ -15,39 +15,102 @@ interface ParsedToolCall {
 }
 
 /**
+ * Scans raw model text and finds offsets of balanced top-level JSON objects
+ * using character-wise brace matching (honoring string literals). Regex-based
+ * extraction truncates at the first `}` it sees, which corrupts tool calls
+ * whose comment bodies contain nested braces (e.g. code snippets like
+ * `catch {}` or object literals inside a review comment).
+ */
+function getBalancedJsonObjectSpans(
+  rawText: string,
+  predicate: (objectStart: string) => boolean = () => true,
+): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  const stack: number[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < rawText.length; i++) {
+    const ch = rawText[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\' && inString) {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === '{') {
+      if (stack.length === 0 && !predicate(rawText.slice(i))) {
+        continue; // Ignore top-level objects that don't look like tool calls.
+      }
+      stack.push(i);
+    } else if (ch === '}') {
+      if (stack.length > 0) {
+        const start = stack.pop()!;
+        if (stack.length === 0) {
+          spans.push([start, i + 1]);
+        }
+      }
+    }
+  }
+
+  return spans;
+}
+
+/**
  * Parses JSON tool calls embedded in raw model text output. Local models
  * frequently emit tool calls as JSON text in content deltas rather than as
  * structured toolCall events.
+ *
+ * The extraction is brace-aware (string-literal safe) so nested braces inside
+ * comment bodies (e.g. code snippets like `catch {}` or object literals in a
+ * review comment) do NOT truncate the JSON object prematurely. The old regex
+ * approach only handled 3 levels of nesting and silently dropped any comment
+ * that contained a brace pair.
  */
 function parseFallbackToolCalls(rawText: string): ParsedToolCall[] {
   const calls: ParsedToolCall[] = [];
 
   try {
-    const jsonRegex = /\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}/g;
+    // Character-wise scan that tracks string literals and brace depth so we can
+    // extract complete top-level JSON objects regardless of nested braces.
+    // The predicate receives text starting at the '{' character, so the regex
+    // must account for the opening brace followed by the "name" key.
+    const matches = getBalancedJsonObjectSpans(rawText, (start) =>
+      /^[\s\n]*\{[\s\n]*"name"\s*:/.test(start),
+    );
 
-    let match: RegExpExecArray | null;
-
-    while ((match = jsonRegex.exec(rawText)) !== null) {
+    for (const [start, end] of matches) {
       try {
-        const parsed = JSON.parse(match[0]);
+        const parsed = JSON.parse(rawText.slice(start, end));
 
-        if (parsed.name && parsed.arguments !== undefined) {
-          calls.push({
-            name: parsed.name,
-            arguments: parsed.arguments,
-          });
-        } else if (parsed.name && parsed.args !== undefined) {
-          calls.push({
-            name: parsed.name,
-            arguments: parsed.args,
-          });
+        if (parsed && typeof parsed.name === 'string') {
+          const args = parsed.arguments !== undefined ? parsed.arguments : parsed.args;
+
+          if (args !== undefined) {
+            calls.push({ name: parsed.name, arguments: args });
+          }
         }
       } catch {
         // Ignore malformed JSON fragments.
       }
     }
 
-    const toolCallRegex = /<\|tool_call\|>?:?call:([a-zA-Z0-9_-]+)\{(.*?)\}/g;
+    // Lenient regex: handles `<|tool_call|>call:name{}`, `<|tool_call>call: name{}`,
+    // `<|tool_call|>name{}`, and whitespace variants. Local models are inconsistent
+    // about the exact dialect so we accept any of these forms.
+    const toolCallRegex = /<\|tool_call\|?>?\s*:?\s*(?:call\s*:\s*)?([a-zA-Z0-9_-]+)\{(.*?)\}/g;
 
     // eslint-disable-next-line no-constant-condition
     let toolMatch: RegExpExecArray | null;
@@ -81,6 +144,103 @@ function parseFallbackToolCalls(rawText: string): ParsedToolCall[] {
 }
 
 /**
+ * Removes raw tool-call syntax from assistant text so markers never leak into
+ * the client UI or into context history. The model emits tool calls in content
+ * deltas (e.g. `<|tool_call|>call:get_directory_tree{}`) when it uses a dialect
+ * the SDK's structured parser doesn't recognize. Leaving that raw text in
+ * history causes the model to see (and repeat) its own tool-call markers on the
+ * next turn, resulting in duplicate executions.
+ *
+ * This is brace-aware so tool calls with nested braces in their arguments
+ * (e.g. comment bodies containing code snippets) are removed completely
+ * rather than truncated by a naive regex.
+ */
+export function stripToolCallMarkers(text: string): string {
+  if (!text) return '';
+
+  const spansToRemove: Array<[number, number]> = [];
+
+  // JSON tool calls emitted as raw text: {"name": "...", "arguments": {...}, ...}
+  // Predicate receives text starting at the '{' character.
+  const jsonSpans = getBalancedJsonObjectSpans(text, (start) =>
+    /^[\s\n]*\{[\s\n]*"name"\s*:/.test(start),
+  );
+  spansToRemove.push(...jsonSpans);
+
+  // Tool-call dialect: <|tool_call|>call:name{...} (or whitespace variants).
+  const dialectRegex = /<\|tool_call\|?>?\s*:?\s*(?:call\s*:\s*)?[a-zA-Z0-9_-]+\{/g;
+  let toolMatch: RegExpExecArray | null;
+
+  while ((toolMatch = dialectRegex.exec(text)) !== null) {
+    const start = toolMatch.index;
+
+    // Scan for the matching closing brace, honoring string literals.
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let j = start; j < text.length; j++) {
+      const ch = text[j];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (ch === '\\' && inString) {
+        escaped = true;
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) continue;
+
+      if (ch === '{') {
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+
+        if (depth === 0) {
+          spansToRemove.push([start, j + 1]);
+          break;
+        }
+      }
+    }
+  }
+
+  // Sort spans by start offset and merge overlapping ranges.
+  const sorted = spansToRemove.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+
+  for (const [start, end] of sorted) {
+    const last = merged[merged.length - 1];
+
+    if (last && start <= last[1]) {
+      last[1] = Math.max(last[1], end);
+    } else {
+      merged.push([start, end]);
+    }
+  }
+
+  // Rebuild the text without removed tool-call spans.
+  let clean = '';
+  let cursor = 0;
+
+  for (const [start, end] of merged) {
+    clean += text.slice(cursor, start);
+    cursor = end;
+  }
+
+  clean += text.slice(cursor);
+
+  return clean.trim();
+}
+
+/**
  * Selects the tool subset exposed to the model for this turn.
  *
  * All read-only codebase exploration, branch inspection, and PR investigation
@@ -88,12 +248,15 @@ function parseFallbackToolCalls(rawText: string): ParsedToolCall[] {
  * repository, read files, list branches, and compare implementations without
  * the user needing to use specific keywords.
  *
- * Only mutation tools (leave_pr_comment, request_pr_changes) are gated behind
- * intent detection to avoid exposing destructive actions unnecessarily.
+ * Mutation tools (leave_pr_comment, request_pr_changes) are also ALWAYS
+ * exposed. They do not execute on their own: the runtime gates every mutation
+ * behind a socket confirmation dialog bound to the initiating client, so the
+ * user explicitly approves each write. Keyword-based gating is harmful here
+ * because follow-up turns like "yes I approve" or "please post it" do not
+ * contain the original intent keyword and the model is then unable to emit the
+ * tool call it already drafted.
  */
-function selectTools(userMessage: string, allTools: RuntimeTool[]): RuntimeTool[] {
-  const msg = userMessage.toLowerCase();
-
+function selectTools(_userMessage: string, allTools: RuntimeTool[]): RuntimeTool[] {
   // Always available: full codebase exploration + branch inspection + PR tools.
   // The agent should be able to navigate the cloned repository, read files,
   // list branches, and compare implementations without keyword gating.
@@ -121,34 +284,12 @@ function selectTools(userMessage: string, allTools: RuntimeTool[]): RuntimeTool[
     'get_file_history',
     'get_file_at_commit',
     'get_branch_status',
+    // Mutation tools (always exposed; execution requires user confirmation)
+    'leave_pr_comment',
+    'request_pr_changes',
   ]);
 
-  const selected = new Set<string>(alwaysAvailable);
-
-  const wantsComment =
-    msg.includes('comment') ||
-    msg.includes('post') ||
-    msg.includes('leave') ||
-    msg.includes('send') ||
-    msg.includes('submit');
-
-  const wantsChanges =
-    msg.includes('request change') ||
-    msg.includes('request_changes') ||
-    msg.includes('changes on the pr') ||
-    msg.includes('changes on this pr') ||
-    msg.includes('approve') ||
-    msg.includes('reject');
-
-  if (wantsComment) {
-    selected.add('leave_pr_comment');
-  }
-
-  if (wantsChanges) {
-    selected.add('request_pr_changes');
-  }
-
-  return allTools.filter((tool) => selected.has(tool.name));
+  return allTools.filter((tool) => alwaysAvailable.has(tool.name));
 }
 
 export class ChatAgent extends BaseAgent {
@@ -219,18 +360,31 @@ export class ChatAgent extends BaseAgent {
     if (githubMeta) {
       metaContext = `\n\n## GitHub PR Metadata\nOwner: ${githubMeta.owner}\nRepo: ${githubMeta.repo}\nPull Number: ${githubMeta.pull_number}`;
       if (githubMeta.creator) metaContext += `\nCreator: ${githubMeta.creator}`;
-      if (githubMeta.additions !== undefined) metaContext += `\nAdditions: ${githubMeta.additions}`;
-      if (githubMeta.deletions !== undefined) metaContext += `\nDeletions: ${githubMeta.deletions}`;
-      if (githubMeta.changed_files !== undefined) {
-        metaContext += `\nChanged Files: ${githubMeta.changed_files}`;
+      let additions = githubMeta.additions;
+      let deletions = githubMeta.deletions;
+      let changedFilesCount = githubMeta.changed_files;
+
+      if (additions === undefined || deletions === undefined) {
+        additions = 0;
+        deletions = 0;
+        const lines = (prDiff || '').split('\n');
+        for (const line of lines) {
+          if (line.startsWith('+') && !line.startsWith('+++')) additions++;
+          else if (line.startsWith('-') && !line.startsWith('---')) deletions++;
+        }
       }
+
+      if (changedFilesCount === undefined) {
+        changedFilesCount = parsedDiffFiles.length;
+      }
+
       // Explicit line count context for the PR
-      const totalLines = (githubMeta.additions ?? 0) + (githubMeta.deletions ?? 0);
-      metaContext += `\n\n## PR Size Summary\n- **Lines Added:** ${githubMeta.additions ?? 0}`;
-      metaContext += `\n- **Lines Removed:** ${githubMeta.deletions ?? 0}`;
+      const totalLines = additions + deletions;
+      metaContext += `\n\n## PR Size Summary\n- **Lines Added:** ${additions}`;
+      metaContext += `\n- **Lines Removed:** ${deletions}`;
       metaContext += `\n- **Total Lines Changed:** ${totalLines}`;
-      if (githubMeta.changed_files !== undefined) {
-        metaContext += `\n- **Files Modified:** ${githubMeta.changed_files}`;
+      if (changedFilesCount !== undefined) {
+        metaContext += `\n- **Files Modified:** ${changedFilesCount}`;
       }
       metaContext += `\n\nUse this context to gauge the scope of the PR. A small PR (under 100 lines) is likely a focused change, while a large PR (500+ lines) may need more careful review.`;
     }
@@ -409,7 +563,13 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
           }
 
           case 'toolError': {
-            console.error('❌ [ChatAgent] Tool parsing error:', event.error);
+            // The model emitted a tool call the SDK couldn't parse natively
+            // (e.g. the <|tool_call|>call:name{} dialect). The fallback parser
+            // below recovers these, so this is informational, not fatal.
+            console.warn(
+              '⚠️ [ChatAgent] SDK tool parse issue, fallback parser will attempt:',
+              event.error ?? event,
+            );
             break;
           }
 
@@ -463,9 +623,11 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
       // This turn contains tool calls. Discard the preliminary prose and
       // preserve the assistant's structured tool-call turn in history so the
       // follow-up completion can reason from the tool results correctly.
+      // Strip raw <|tool_call|> markers from history so the model does NOT
+      // see (and re-emit) its own tool-call dialect on the next turn.
       contextManager.addRecent({
         role: 'assistant',
-        content: rawText || streamedContent,
+        content: stripToolCallMarkers(rawText || streamedContent),
       });
 
       // Tools that mutate state or require user confirmation must run serially.
@@ -475,9 +637,7 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
       // "anonymous.submitPRReview") to the real registered tool name so
       // mutation calls always go through the confirmation-gated serial path.
       const mutationTools = new Set(
-        runtimeTools
-          .filter((tool) => (tool.effect ?? 'read') !== 'read' && tool.confirmation?.required)
-          .map((tool) => tool.name),
+        runtimeTools.filter((tool) => (tool.effect ?? 'read') !== 'read').map((tool) => tool.name),
       );
 
       // Resolve alias names before classifying parallel vs serial calls.

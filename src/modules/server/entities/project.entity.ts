@@ -20,10 +20,10 @@ class ProjectEntity extends BaseEntity {
   @Column()
   updated_at: Date;
 
-  @Column({ type: 'json' })
+  @Column({ type: 'simple-json' })
   repositorySecrets: Record<string, string>;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   pr_reviews: Record<string, any>;
 
   @Column({ nullable: true })
@@ -32,7 +32,7 @@ class ProjectEntity extends BaseEntity {
   @Column({ nullable: true })
   ai_model: string;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   analysis: Record<string, any>;
 
   @Column({ default: 1 })
@@ -59,7 +59,7 @@ class ProjectEntity extends BaseEntity {
   @Column({ nullable: true })
   vps_password: string;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   agent_messages: any[] | null;
 }
 

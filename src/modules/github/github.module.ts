@@ -8,26 +8,50 @@ import naclUtil from 'tweetnacl-util';
 import { type SimpleGit } from 'simple-git';
 import { simpleGit } from 'simple-git';
 import type { MainModule } from '../main.module.js';
+import SettingsEntity from '../server/entities/settings.entity.js';
 
 class GithubModule {
   octokit: Octokit;
   git: SimpleGit;
   userName: string;
   mainModule: MainModule;
+  private currentToken: string;
 
   constructor(mainModule?: MainModule) {
     if (mainModule) this.mainModule = mainModule;
+    this.currentToken = process.env.GITHUB_TOKEN || '';
     this.octokit = new Octokit({
-      auth: process.env.GITHUB_TOKEN,
+      auth: this.currentToken,
     });
 
     this.git = simpleGit({
-      config: [`http.extraHeader=Authorization: Bearer ${process.env.GITHUB_TOKEN}`],
+      config: [`http.extraHeader=Authorization: Bearer ${this.currentToken}`],
     });
   }
 
-  init() {
+  updateToken(token: string) {
+    this.currentToken = token;
+    this.octokit = new Octokit({
+      auth: token,
+    });
+    this.git = simpleGit({
+      config: [`http.extraHeader=Authorization: Bearer ${token}`],
+    });
+  }
+
+  async init() {
     console.log('GitHub module initialized');
+    if (this.mainModule && this.mainModule.database) {
+      try {
+        const repo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
+        const settings = await repo.findOneBy({ id: 1 });
+        if (settings?.githubToken) {
+          this.updateToken(settings.githubToken);
+        }
+      } catch (err) {
+        console.error('Failed to load github token from db', err);
+      }
+    }
   }
 
   async cloneRepository({
@@ -67,7 +91,7 @@ class GithubModule {
       fs.rmSync(repositoryPath, { recursive: true, force: true });
     }
 
-    const token = process.env.GITHUB_TOKEN || '';
+    const token = this.currentToken;
 
     const gitWithProgress = simpleGit({
       progress: ({ method, stage, progress, processed, total }) => {

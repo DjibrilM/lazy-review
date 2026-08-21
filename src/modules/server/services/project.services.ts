@@ -172,6 +172,14 @@ export class ProjectServices {
         return res.status(404).json({ message: 'Project not found' });
       }
 
+      // Require the project to have been indexed before starting a review session.
+      if (!project.analysis || !project.indexing_version) {
+        return res.status(400).json({
+          error:
+            'This repository has not been indexed yet. Please wait for indexing to complete before starting a review.',
+        });
+      }
+
       await this.mainModule.aiAgent.sessionManager.startSession(
         projectId,
         pullNumber,
@@ -262,6 +270,14 @@ export class ProjectServices {
 
       const project = await ProjectEntity.findOne({ where: { id: projectId } });
       if (!project) return res.status(404).json({ message: 'Project not found' });
+
+      // Require the project to have been indexed before generating a review.
+      if (!project.analysis || !project.indexing_version) {
+        return res.status(400).json({
+          error:
+            'This repository has not been indexed yet. Please wait for indexing to complete before generating a review.',
+        });
+      }
 
       // Initialize state to running
       const prReviews = project.pr_reviews || {};
