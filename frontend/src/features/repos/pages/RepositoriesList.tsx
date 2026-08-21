@@ -8,11 +8,13 @@ import { projectService } from '@/services/project.service';
 import type { GitHubRepository } from '@/interfaces/github-repo.interface';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { PlusIcon } from '@/components/vectors/PlusIcon';
 import { CloneProgressDialog } from '../components/CloneProgressDialog';
 import Visible from "@/components/common/Visible";
 
 export function RepositoriesList() {
+    const navigate = useNavigate();
     const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
     const [isCloning, setIsCloning] = useState(false);
     const [cloningRepoName, setCloningRepoName] = useState('');
@@ -28,13 +30,21 @@ export function RepositoriesList() {
         setIsCloning(true); // Open the progress dialog
 
         try {
-            await projectService.createProject({
+            const result = await projectService.createProject({
                 repository_name: repo.name,
                 repository_url: repo.clone_url,
-                owner: repo.owner.login,
+                owner: repo.owner?.login || 'unknown',
             });
             toast.success(`Successfully cloned ${repo.name}`);
             refetch();
+
+            // Navigate to the project details page so the indexing
+            // progress listener (useRepository) is mounted and can
+            // receive indexing_progress events.
+            const projectId = result?.data?.project_id;
+            if (projectId) {
+                navigate(`/repo/${projectId}`);
+            }
         } catch (err: any) {
             toast.error(err.message || 'Failed to clone repository');
             // We don't close the dialog here so the user can read the error logs in the terminal
@@ -74,10 +84,10 @@ export function RepositoriesList() {
                     />
                 ))}
                 <Visible visible={projects.length === 0}>
-<div className="py-12 text-center text-muted-foreground font-mono text-sm border border-border rounded-md bg-card">
+                    <div className="py-12 text-center text-muted-foreground font-mono text-sm border border-border rounded-md bg-card">
                         No local repositories found. Clone one to get started.
                     </div>
-</Visible>
+                </Visible>
             </div>
 
             <Dialog open={isCloneModalOpen} onOpenChange={setIsCloneModalOpen}>

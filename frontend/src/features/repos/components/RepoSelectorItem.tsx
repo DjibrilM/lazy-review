@@ -1,4 +1,3 @@
-import React from 'react';
 import { Globe, Lock, Star, HardDrive } from 'lucide-react';
 import Visible from '@/components/common/Visible';
 import { LanguageBar } from './LanguageBar';
@@ -50,13 +49,15 @@ export const RepoSelectorItem = ({
                         }
                     >
                         <img
-                            src={repo.owner.avatar_url}
-                            alt={repo.owner.login}
-                            title={`View ${repo.owner.login}'s profile`}
+                            src={repo.owner?.avatar_url}
+                            alt={repo.owner?.login}
+                            title={`View ${repo.owner?.login}'s profile`}
                             className="w-5 h-5 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-primary transition-all shrink-0"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedUserLogin(repo.owner.login);
+                                if (repo.owner?.login) {
+                                    setSelectedUserLogin(repo.owner.login);
+                                }
                             }}
                         />
                     </Visible>

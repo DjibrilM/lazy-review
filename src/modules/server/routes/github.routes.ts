@@ -12,7 +12,7 @@ class GithubRoutes {
 
   constructor(app: Express, mainModule: MainModule) {
     this.mainModule = mainModule;
-    this.githubServices = new GithubServices();
+    this.githubServices = new GithubServices(mainModule.github);
     this.projectServices = new ProjectServices(mainModule);
     this.app = app;
   }

@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import Visible from '@/components/common/Visible';
 import { useQuery } from '@tanstack/react-query';
 
 import {

@@ -139,7 +139,6 @@ export function AIReviewTab({
 
                 {/* Summary bar */}
                 <Visible visible={reviewStatus === 'success' && issues.length > 0}>
-                    (
                     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border bg-muted/20 px-3 py-2.5">
                         <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                             <AlertCircle className="h-3.5 w-3.5 text-destructive" />
@@ -153,9 +152,7 @@ export function AIReviewTab({
                             <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                             <span>{counts.warning}</span>
                             <span className="text-muted-foreground">
-                                warning<Visible visible={counts.warning === 1} fallback={'s'}>
-                                    ''
-                                </Visible>
+                                warning<Visible visible={counts.warning !== 1}>s</Visible>
                             </span>
                         </div>
 
@@ -163,9 +160,7 @@ export function AIReviewTab({
                             <Lightbulb className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                             <span>{counts.suggestion}</span>
                             <span className="text-muted-foreground">
-                                suggestion<Visible visible={counts.suggestion === 1} fallback={'s'}>
-                                    ''
-                                </Visible>
+                                suggestion<Visible visible={counts.suggestion !== 1}>s</Visible>
                             </span>
                         </div>
                     </div>
@@ -269,7 +264,6 @@ export function AIReviewTab({
 
                 {/* Issues */}
                 <Visible visible={reviewStatus === 'success' && sortedIssues.length > 0}>
-                    (
                     <div className="overflow-hidden rounded-md border border-border bg-card">
                         <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-2">
                             <div className="flex items-center gap-2">

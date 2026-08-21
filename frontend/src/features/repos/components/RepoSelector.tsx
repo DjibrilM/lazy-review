@@ -131,6 +131,7 @@ export const RepoSelector = ({ onSelect }: RepoSelectorProps) => {
 
                 <Visible visible={repos.length > 0 && !isError}>
                     <div className="flex flex-col gap-2">
+
                         {repos.map((repo, index) => {
                             const isLastElement = !debouncedSearch && index === repos.length - 1;
 
@@ -170,7 +171,7 @@ export const RepoSelector = ({ onSelect }: RepoSelectorProps) => {
                             <RepoPagination
                                 page={page}
                                 maxPages={maxPages}
-                                isLastPage={isLastPage}
+                                isLastPage={!!isLastPage}
                                 setPage={setPage}
                             />
                         </Visible>

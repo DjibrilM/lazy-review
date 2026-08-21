@@ -154,7 +154,7 @@ export function PRList({
                     </div>
                 </div>
             )}>
-                (
+
                 <div className="divide-y divide-border">
                     {visiblePullRequests.map((pr: any) => {
                         const status = getPullRequestIcon(pr);
@@ -191,17 +191,17 @@ export function PRList({
                                         </span>
 
                                         <Visible visible={pr.created_at}>
-<span>{formatDate(pr.created_at)}</span>
-</Visible>
+                                            <span>{formatDate(pr.created_at)}</span>
+                                        </Visible>
 
                                         <Visible visible={pr.user?.login}>
-<>
+                                            <>
                                                 <span>by</span>
                                                 <span className="font-medium text-foreground/80">
                                                     {pr.user.login}
                                                 </span>
                                             </>
-</Visible>
+                                        </Visible>
                                     </div>
                                 </div>
 
@@ -211,12 +211,12 @@ export function PRList({
                                         <MessageSquare className="h-3.5 w-3.5" />
                                         <span>{pr.comments}</span>
                                     </div>
-</Visible>
+                                </Visible>
                             </button>
                         );
                     })}
                 </div>
-</Visible>
+            </Visible>
         </section>
     );
 }

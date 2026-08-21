@@ -77,10 +77,10 @@ export const RepositoryCard = ({ repo, viewType = 'card' }: RepositoryCardProps)
                     </div>
 
                     <Visible visible={!isList}>
-<p className="text-sm text-muted-foreground mt-2 mb-2 line-clamp-2">
+                        <p className="text-sm text-muted-foreground mt-2 mb-2 line-clamp-2">
                             {repo.description}
                         </p>
-</Visible>
+                    </Visible>
 
                     <div
                         className={cn(

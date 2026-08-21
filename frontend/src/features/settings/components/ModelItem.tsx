@@ -96,21 +96,21 @@ export const ModelItem = ({
 
                     <div className="mt-px truncate text-[11px] leading-4 text-muted-foreground">
                         <Visible visible={model.isCached} fallback={`Requires ${model.requiredRamGb} GB memory`}>
-                            `${formatSize(model.actualSize)} on disk`
+                            ${formatSize(model.actualSize)} on disk
                         </Visible>
                     </div>
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
                     <Visible visible={isDownloading}>
-<Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-</Visible>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    </Visible>
 
                     <Visible visible={status}>
-<span className="max-w-28 truncate text-[11px] tabular-nums text-muted-foreground">
+                        <span className="max-w-28 truncate text-[11px] tabular-nums text-muted-foreground">
                             {status}
                         </span>
-</Visible>
+                    </Visible>
 
                     <ChevronRight
                         className={cn(
@@ -147,21 +147,21 @@ export const ModelItem = ({
 
                     {/* Compatibility */}
                     <Visible visible={!model.isCompatible && !model.isCached}>
-<div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 px-2.5 py-2">
+                        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 px-2.5 py-2">
                             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
 
                             <p className="text-[11px] leading-4 text-destructive">
                                 This model requires more memory than this device has available.
                             </p>
                         </div>
-</Visible>
+                    </Visible>
 
                     {/* Download */}
                     <Visible visible={isDownloading && download}>
-<div className="mt-3">
+                        <div className="mt-3">
                             <div className="mb-1.5 flex items-center justify-between gap-3">
                                 <span className="min-w-0 truncate text-[10px] text-muted-foreground">
-                                    {download.message || 'Downloading model…'}
+                                    {download?.message || 'Downloading model…'}
                                 </span>
 
                                 <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
@@ -182,18 +182,18 @@ export const ModelItem = ({
                                 />
                             </div>
                         </div>
-</Visible>
+                    </Visible>
 
                     {/* Error */}
                     <Visible visible={error}>
-<div className="mt-3 flex items-start gap-2 text-destructive">
+                        <div className="mt-3 flex items-start gap-2 text-destructive">
                             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
 
                             <p className="text-[11px] leading-4">
                                 {error}
                             </p>
                         </div>
-</Visible>
+                    </Visible>
 
                     {/* Action */}
                     <div className="mt-3 flex justify-end">
@@ -210,7 +210,7 @@ export const ModelItem = ({
                                 )}>
                                     (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-</Visible>
+                                </Visible>
 
                                 <Visible visible={isDownloading} fallback={'Download'}>
                                     'Downloading'
@@ -228,7 +228,7 @@ export const ModelItem = ({
                                 <Trash2 className="h-3.5 w-3.5" />
                                 Delete
                             </Button>
-</Visible>
+                        </Visible>
                     </div>
                 </div>
             </ExpandableContainer>

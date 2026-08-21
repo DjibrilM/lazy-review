@@ -104,26 +104,25 @@ export const HardwareSectionContent = ({
                     Hardware information unavailable
                 </div>
             )}>
-                (
                 <>
-                    <InfoRow label="CPU Cores" value={hardware.cpuCores} />
+                    <InfoRow label="CPU Cores" value={hardware?.cpuCores} />
                     <Divider inset={'row'} />
 
                     <InfoRow
                         label="Memory"
-                        value={`${hardware.totalRamGb} GB`}
+                        value={`${hardware?.totalRamGb} GB`}
                     />
                     <Divider inset={'row'} />
 
                     <InfoRow
                         label="Available"
-                        value={`${hardware.availableRamGb} GB`}
+                        value={`${hardware?.availableRamGb} GB`}
                     />
                     <Divider inset={'row'} />
 
                     <InfoRow
                         label="GPU Memory"
-                        value={`${hardware.gpuRamGb} GB`}
+                        value={`${hardware?.gpuRamGb} GB`}
                     />
                 </>
 </Visible>

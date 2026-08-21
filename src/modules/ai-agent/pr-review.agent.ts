@@ -215,7 +215,7 @@ export class PrReviewAgent extends BaseAgent {
           }
         }
 
-        const agRegex = /<\|tool_call\|>?:?call:([a-zA-Z0-9_-]+)\{(.*?)\}/g;
+        const agRegex = /<\|tool_call\|?>?\s*:?\s*(?:call\s*:\s*)?([a-zA-Z0-9_-]+)\{(.*?)\}/g;
         let agMatch;
         while ((agMatch = agRegex.exec(text)) !== null) {
           try {

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDuration, getErrorMessage } from '../utils/repo-utils';
@@ -41,9 +42,8 @@ export function RepositoryRefetchError({
                 <Visible visible={isFetching} fallback={(
                     <RefreshCw className="h-3 w-3" />
                 )}>
-                    (
                     <Loader2 className="h-3 w-3 animate-spin" />
-</Visible>
+                </Visible>
                 Retry
             </Button>
         </div>
@@ -65,6 +65,14 @@ export function IndexingProgress({
     indexingThinking,
     onCancel,
 }: IndexingProgressProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (containerRef.current) {
+            containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        }
+    }, [indexingLog, indexingThinking]);
+
     if (!isCurrentlyIndexing) return null;
 
     return (
@@ -92,11 +100,11 @@ export function IndexingProgress({
                 </button>
             </div>
 
-            <div className="max-h-44 overflow-y-auto bg-background px-3 py-2.5 font-mono">
+            <div ref={containerRef} className="max-h-44 overflow-y-auto bg-background px-3 py-2.5 font-mono">
                 <Visible visible={indexingLog.length > 0} fallback={(
                     <p className="text-[10px] leading-4 text-muted-foreground">Waiting for progress…</p>
                 )}>
-                    (
+
                     <div className="space-y-1">
                         {indexingLog.map((message, index) => (
                             <p
@@ -111,10 +119,10 @@ export function IndexingProgress({
                             </p>
                         ))}
                     </div>
-</Visible>
+                </Visible>
 
                 <Visible visible={indexingThinking}>
-<div className="mt-2 border-l-2 border-border pl-2">
+                    <div className="mt-2 border-l-2 border-border pl-2">
                         <p className="mb-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
                             Analyzing
                         </p>
@@ -123,7 +131,7 @@ export function IndexingProgress({
                             {indexingThinking}
                         </div>
                     </div>
-</Visible>
+                </Visible>
             </div>
         </div>
     );

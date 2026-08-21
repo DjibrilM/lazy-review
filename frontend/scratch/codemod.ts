@@ -1,10 +1,10 @@
-import { Project, SyntaxKind, JsxExpression, Node, ts } from "ts-morph";
+import { Project, SyntaxKind, JsxExpression, Node, ts } from 'ts-morph';
 
 const project = new Project({
-  tsConfigFilePath: "tsconfig.app.json",
+  tsConfigFilePath: 'tsconfig.app.json',
 });
 
-const sourceFiles = project.getSourceFiles().filter(s => s.getFilePath().endsWith(".tsx"));
+const sourceFiles = project.getSourceFiles().filter((s) => s.getFilePath().endsWith('.tsx'));
 
 console.log(`Found ${sourceFiles.length} TSX files to process.`);
 
@@ -26,10 +26,13 @@ for (const sourceFile of sourceFiles) {
     const expression = jsxExpr.getExpression();
     if (!expression) continue;
 
-    if (Node.isBinaryExpression(expression) && expression.getOperatorToken().getKind() === SyntaxKind.AmpersandAmpersandToken) {
+    if (
+      Node.isBinaryExpression(expression) &&
+      expression.getOperatorToken().getKind() === SyntaxKind.AmpersandAmpersandToken
+    ) {
       const left = expression.getLeft().getText();
       const right = expression.getRight().getText();
-      
+
       const newText = `<Visible visible={${left}}>\n${right}\n</Visible>`;
       jsxExpr.replaceWithText(newText);
       hasModifications = true;
@@ -47,15 +50,16 @@ for (const sourceFile of sourceFiles) {
   if (hasModifications) {
     // Check if Visible is already imported
     const importDeclarations = sourceFile.getImportDeclarations();
-    const hasVisibleImport = importDeclarations.some(imp => 
-      imp.getModuleSpecifierValue() === '@/components/common/Visible' || 
-      imp.getModuleSpecifierValue().endsWith('/Visible')
+    const hasVisibleImport = importDeclarations.some(
+      (imp) =>
+        imp.getModuleSpecifierValue() === '@/components/common/Visible' ||
+        imp.getModuleSpecifierValue().endsWith('/Visible'),
     );
 
     if (!hasVisibleImport) {
       sourceFile.addImportDeclaration({
         defaultImport: 'Visible',
-        moduleSpecifier: '@/components/common/Visible'
+        moduleSpecifier: '@/components/common/Visible',
       });
     }
 

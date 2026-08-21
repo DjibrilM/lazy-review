@@ -80,25 +80,25 @@ export const UserProfileDialog = ({ open, onOpenChange, profile }: UserProfileDi
                     </div>
 
                     <Visible visible={profile.bio}>
-<div className="text-sm text-foreground bg-accent/30 p-3 rounded-md border border-border/50 shadow-inner">
+                        <div className="text-sm text-foreground bg-accent/30 p-3 rounded-md border border-border/50 shadow-inner">
                             {profile.bio}
                         </div>
-</Visible>
+                    </Visible>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-muted-foreground mt-1">
                         <Visible visible={profile.company}>
-<div className="flex items-center gap-2" title={profile.company}>
+                            <div className="flex items-center gap-2" title={profile.company || undefined}>
                                 <Building2 size={14} className="shrink-0" />
                                 <span className="truncate">{profile.company}</span>
                             </div>
-</Visible>
+                        </Visible>
 
                         <Visible visible={profile.location}>
-<div className="flex items-center gap-2" title={profile.location}>
+                            <div className="flex items-center gap-2" title={profile.location || undefined}>
                                 <MapPin size={14} className="shrink-0" />
                                 <span className="truncate">{profile.location}</span>
                             </div>
-</Visible>
+                        </Visible>
 
                         <Visible visible={profile.blog}>
 <div className="flex items-center gap-2" title={profile.blog}>

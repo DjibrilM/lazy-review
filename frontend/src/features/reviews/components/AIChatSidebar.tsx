@@ -3,8 +3,10 @@ import {
     Loader2,
     MessageSquareMore,
     Send,
+    Copy,
+    Check,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/util/shared';
 import { normalizeReasoningMarkers } from '@/lib/util/chat-markers';
@@ -30,6 +32,29 @@ interface AIChatSidebarProps {
 }
 
 
+
+function CopyButton({ text, isUser }: { text: string; isUser?: boolean }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <button
+            onClick={handleCopy}
+            className={cn(
+                "flex items-center gap-1.5 text-[10px] transition-colors",
+                isUser ? "text-background/70 hover:text-background" : "text-muted-foreground hover:text-foreground"
+            )}
+            title="Copy message"
+        >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        </button>
+    );
+}
 
 function ThinkingPlaceholder() {
     return (
@@ -136,79 +161,90 @@ export function AIChatSidebar({
                         >
                             <div
                                 className={cn(
-                                    'min-w-0 max-w-[92%]',
+                                    'min-w-0 max-w-[92%] relative gap-3',
                                     isUser &&
                                     'rounded-xl rounded-br-sm bg-foreground px-3 py-2 text-background',
                                     isSystem &&
                                     'rounded-md border border-border/60 bg-muted/25 px-2.5 py-2 text-muted-foreground',
+                                    {
+                                        "flex": isUser
+                                    }
                                 )}
                             >
-                                <div className="space-y-1.5">
-                                    {parts.map((part, index) => {
+                                <div className="flex-1 min-w-0">
+                                    <div className="space-y-1.5">
+                                        {parts.map((part, index) => {
 
 
-                                        console.log('🔥 RENDER PART', {
-                                            messageId: msg.id,
-                                            index,
-                                            type: part.type,
-                                            content: part.content,
-                                            ...(part.type === 'think'
-                                                ? { complete: part.complete }
-                                                : {}),
-                                        });
+                                            console.log('🔥 RENDER PART', {
+                                                messageId: msg.id,
+                                                index,
+                                                type: part.type,
+                                                content: part.content,
+                                                ...(part.type === 'think'
+                                                    ? { complete: part.complete }
+                                                    : {}),
+                                            });
 
 
 
 
-                                        if (part.type === 'think') {
+                                            if (part.type === 'think') {
 
 
-                                            console.log('🧠 RENDERING AnimatedThought');
+                                                console.log('🧠 RENDERING AnimatedThought');
 
 
-                                            return (
-                                                <AnimatedThought
-                                                    key={`${msg.id}-think-${index}`}
-                                                    content={part.content}
-                                                    isActive={!part.complete}
-                                                />
-                                            );
-                                        }
+                                                return (
+                                                    <AnimatedThought
+                                                        key={`${msg.id}-think-${index}`}
+                                                        content={part.content}
+                                                        isActive={!part.complete}
+                                                    />
+                                                );
+                                            }
 
-                                        if (!part.content.trim()) return null;
+                                            if (!part.content.trim()) return null;
 
-                                        if (isUser || isSystem) {
+                                            if (isUser || isSystem) {
+                                                return (
+                                                    <div
+                                                        key={`${msg.id}-text-${index}`}
+                                                        className={cn(
+                                                            'whitespace-pre-wrap text-xs leading-5',
+                                                            isSystem && 'font-mono text-[10px] leading-4',
+                                                        )}
+                                                    >
+                                                        {part.content}
+                                                    </div>
+                                                );
+                                            }
+
                                             return (
                                                 <div
                                                     key={`${msg.id}-text-${index}`}
-                                                    className={cn(
-                                                        'whitespace-pre-wrap text-xs leading-5',
-                                                        isSystem && 'font-mono text-[10px] leading-4',
-                                                    )}
+                                                    className="text-xs leading-5 text-foreground/90 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:text-[11px]"
                                                 >
-                                                    {part.content}
+                                                    <MarkdownRenderer
+                                                        content={part.content}
+                                                        changedFiles={changedFiles}
+                                                        onFileClick={onFileClick}
+                                                    />
                                                 </div>
                                             );
-                                        }
+                                        })}
+                                    </div>
 
-                                        return (
-                                            <div
-                                                key={`${msg.id}-text-${index}`}
-                                                className="text-xs leading-5 text-foreground/90 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-1.5 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:text-[11px]"
-                                            >
-                                                <MarkdownRenderer
-                                                    content={part.content}
-                                                    changedFiles={changedFiles}
-                                                    onFileClick={onFileClick}
-                                                />
-                                            </div>
-                                        );
-                                    })}
+                                    <Visible visible={msg.requiresConfirmation === 'agent_confirmation'}>
+                                        <AgentConfirmationRequest msg={msg} setMessages={setMessages} />
+                                    </Visible>
                                 </div>
 
-                                <Visible visible={msg.requiresConfirmation === 'agent_confirmation'}>
-<AgentConfirmationRequest msg={msg} setMessages={setMessages} />
-</Visible>
+                                {msg.content && msg.content.trim() && !isSystem && (
+                                    <div className="shrink-0 pt-0.5 flex items-start transition-opacity group-hover:opacity-100">
+                                        <CopyButton text={msg.content} isUser={isUser} />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );
@@ -218,19 +254,28 @@ export function AIChatSidebar({
                     <ThinkingPlaceholder />
                 </Visible>
 
+                <Visible visible={reviewStatus === 'idle' && messages.length <= 1}>
+                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground/60">
+                        <MessageSquareMore className="h-8 w-8" />
+                        <p className="text-xs text-center px-6 leading-relaxed">
+                            Generate a review first to start interacting with the AI agent.
+                        </p>
+                    </div>
+                </Visible>
+
                 <Visible visible={reviewStatus === 'running' && messages.length <= 1 && !waitingForFirstToken}>
-<div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         <span>Generating review…</span>
                     </div>
-</Visible>
+                </Visible>
 
                 <Visible visible={reviewStatus === 'error'}>
-<div className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive">
+                    <div className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive">
                         <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
                         <span>{reviewMessage}</span>
                     </div>
-</Visible>
+                </Visible>
 
                 <div ref={chatEndRef} />
             </div>
@@ -255,10 +300,10 @@ export function AIChatSidebar({
                                 event.currentTarget.style.height = 'auto';
                             }
                         }}
-                        placeholder="Ask about the PR…"
+                        placeholder={reviewStatus === 'success' ? "Ask about the PR…" : reviewStatus === 'idle' ? "Generate a review to chat…" : "Wait for review to finish…"}
                         className="max-h-36 min-h-9 w-full resize-none overflow-y-auto bg-transparent py-2 pl-2.5 pr-9 text-xs leading-5 outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
                         rows={1}
-                        disabled={isChatLoading}
+                        disabled={isChatLoading || reviewStatus !== 'success'}
                     />
 
                     <Button
@@ -266,20 +311,19 @@ export function AIChatSidebar({
                         variant="ghost"
                         size="icon"
                         onClick={handleSend}
-                        disabled={isChatLoading || !input.trim()}
+                        disabled={isChatLoading || !input.trim() || reviewStatus !== 'success'}
                         className="absolute bottom-0.5 right-0.5 h-8 w-8 text-muted-foreground"
                     >
                         <Visible visible={isChatLoading} fallback={(
                             <Send className="h-3.5 w-3.5" />
                         )}>
-                            (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-</Visible>
+                        </Visible>
                     </Button>
                 </div>
 
                 <div className="mt-1.5 text-center text-[9px] text-muted-foreground/60">
-                    Answers grounded in indexed project context
+                    AI can make mistakes. Please verify important information.
                 </div>
             </div>
         </div>

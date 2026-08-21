@@ -213,9 +213,8 @@ export function FilesChangedTab({
                                     <Visible visible={isExpanded} fallback={(
                                         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                                     )}>
-                                        (
                                         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-</Visible>
+                                    </Visible>
 
                                     <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 

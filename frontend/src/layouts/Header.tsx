@@ -1,16 +1,18 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
-import { Settings as SettingsIcon, User } from 'lucide-react';
+import { Settings as SettingsIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { ThemeToggle } from '../components/common/ThemeToggle';
 import { UserProfileDialog } from '../features/github/components/UserProfileDialog';
+import { GithubLoginModal } from '../components/GithubLoginModal';
 import { githubService } from '@/services/github.service';
 import Visible from "@/components/common/Visible";
 
 export const Header = () => {
     const [profileDialogOpen, setProfileDialogOpen] = useState(false);
 
-    const { data: userProfile } = useQuery({
+    const [loginModalOpen, setLoginModalOpen] = useState(false);
+
+    const { data: userProfile, refetch: refetchProfile } = useQuery({
         queryKey: ['github-authenticated-user'],
         queryFn: () => githubService.getUserProfile('me'),
         retry: false,
@@ -39,25 +41,24 @@ export const Header = () => {
                     >
                         <SettingsIcon size={14} />
                     </Link>
-                    <ThemeToggle />
+
 
                     <Visible visible={displayProfile?.avatar_url} fallback={(
-                        <div
-                            className="w-8 h-8 rounded-full bg-accent flex items-center justify-center border border-border text-muted-foreground cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                            onClick={() => setProfileDialogOpen(true)}
+                        <button
+                            onClick={() => setLoginModalOpen(true)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-md border border-border bg-foreground text-background hover:bg-foreground/90 transition-colors"
                         >
-                            <User size={16} />
-                        </div>
+                            Login with GitHub
+                        </button>
                     )}>
-                        (
                         <img
-                            src={displayProfile.avatar_url}
-                            alt={displayProfile.login || 'User'}
+                            src={displayProfile?.avatar_url}
+                            alt={displayProfile?.login || 'User'}
                             className="w-8 h-8 rounded-full border border-border object-cover cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                            title={`Logged in as ${displayProfile.login}`}
+                            title={`Logged in as ${displayProfile?.login}`}
                             onClick={() => setProfileDialogOpen(true)}
                         />
-</Visible>
+                    </Visible>
                 </div>
             </div>
 
@@ -65,6 +66,12 @@ export const Header = () => {
                 open={profileDialogOpen}
                 onOpenChange={setProfileDialogOpen}
                 profile={displayProfile as any}
+            />
+
+            <GithubLoginModal
+                open={loginModalOpen}
+                onOpenChange={setLoginModalOpen}
+                onSuccess={() => refetchProfile()}
             />
         </header>
     );

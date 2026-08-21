@@ -7,7 +7,7 @@ import { LLM_MODEL_ID, EMBEDDING_MODEL_ID } from '../../constants.js';
 
 import { executeGitPull } from './tools/git-tools.js';
 import { preLoadOrientationFiles } from './orientation-loader.js';
-import { loadAIModels } from './model-loader.js';
+import { loadAIModels, currentDeviceConfig } from './model-loader.js';
 import { runResearchAgentLoop } from './research-loop.js';
 import { scanCodebase } from './codebase-scanner.js';
 
@@ -118,6 +118,7 @@ export class CodeBaseIndexerAgent {
       timeoutMs = 3_600_000,
     ): Promise<any> => {
       activeRequestIds.add(run.requestId);
+      console.log(`[LLM] Executing completion call on device: ${currentDeviceConfig || 'unknown'}`);
 
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
@@ -172,6 +173,10 @@ export class CodeBaseIndexerAgent {
     };
 
     try {
+      // Emit an initial progress event immediately so the frontend
+      // knows indexing has started even before models are loaded.
+      progress('Starting indexing...');
+
       const project = await this.initializeProject(projectId);
 
       const absoluteRoot = project.repository_path!;

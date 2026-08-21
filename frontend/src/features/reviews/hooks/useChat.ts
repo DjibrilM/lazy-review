@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { projectService } from '@/services/project.service';
 
 import { useSocketEffect } from '@/lib/hooks/useSocketEffect';
-import { stripThinkingMarkers } from '@/lib/util/chat-markers';
+import { stripThinkingMarkers, stripToolCallMarkers } from '@/lib/util/chat-markers';
 import type { AgentConfirmationRequest } from '@/components/providers/SocketProvider';
 
 export interface ChatMessage {
@@ -89,19 +89,18 @@ export function useChat(
         (chunk) => {
           fullReply += chunk;
           // Strip tool call markers and raw JSON tool calls from the display.
-          // Local models sometimes emit tool calls as JSON text in content deltas.
-          const displayContent = fullReply
-            .replace(/\{"name":\s*"[^"]+",\s*"arguments":\s*\{[^}]*\}\}/g, '')
-            .replace(/\{"name":\s*"[^"]+",\s*"args":\s*\{[^}]*\}\}/g, '');
+          // Local models sometimes emit tool calls as JSON text in content deltas
+          // (e.g. <|tool_call|>call:get_directory_tree{} or {"name":"...","arguments":{...}}).
+          // stripToolCallMarkers is brace-aware so comment bodies containing code
+          // snippets (nested braces) are removed completely rather than truncated.
+          const displayContent = stripToolCallMarkers(fullReply);
           setMessages((prev) =>
             prev.map((msg) => (msg.id === assistantId ? { ...msg, content: displayContent } : msg)),
           );
         },
       );
 
-      const cleanReply = fullReply
-        .replace(/\{"name":\s*"[^"]+",\s*"arguments":\s*\{[^}]*\}\}/g, '')
-        .replace(/\{"name":\s*"[^"]+",\s*"args":\s*\{[^}]*\}\}/g, '');
+      const cleanReply = stripToolCallMarkers(fullReply);
 
       // Strip thinking markers from history so raw reasoning isn't fed back
       // into the LLM on subsequent turns.

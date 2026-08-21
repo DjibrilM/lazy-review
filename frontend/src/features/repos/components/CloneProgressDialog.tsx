@@ -16,6 +16,8 @@ export function CloneProgressDialog({ isOpen, onOpenChange, repoName }: ClonePro
     const [logs, setLogs] = useState<ProjectCreationLog[]>([]);
     const [isDone, setIsDone] = useState(false);
     const [isError, setIsError] = useState(false);
+    const [indexingMessages, setIndexingMessages] = useState<string[]>([]);
+    const [isIndexing, setIsIndexing] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useSocketEffect({
@@ -44,6 +46,24 @@ export function CloneProgressDialog({ isOpen, onOpenChange, repoName }: ClonePro
                 );
             }
         },
+        onIndexingProgress: (data: any) => {
+            if (data.status === 'running' && data.message) {
+                setIsIndexing(true);
+                setIndexingMessages((prev) => {
+                    if (prev[prev.length - 1] === data.message) return prev;
+                    return [...prev, data.message];
+                });
+            } else if (data.status === 'success') {
+                setIsIndexing(false);
+                setIndexingMessages((prev) => [...prev, '✅ Indexing complete!']);
+            } else if (data.status === 'error') {
+                setIsIndexing(false);
+                setIndexingMessages((prev) => [...prev, `❌ Indexing failed: ${data.message || 'Unknown error'}`]);
+            } else if (data.status === 'cancelled') {
+                setIsIndexing(false);
+                setIndexingMessages((prev) => [...prev, 'Indexing cancelled.']);
+            }
+        },
     });
 
     useEffect(() => {
@@ -51,6 +71,8 @@ export function CloneProgressDialog({ isOpen, onOpenChange, repoName }: ClonePro
             setLogs([]);
             setIsDone(false);
             setIsError(false);
+            setIndexingMessages([]);
+            setIsIndexing(false);
         }
     }, [isOpen]);
 
@@ -82,16 +104,16 @@ export function CloneProgressDialog({ isOpen, onOpenChange, repoName }: ClonePro
                                 <div className="flex items-start space-x-2">
                                     <div className="mt-0.5 shrink-0">
                                         <Visible visible={log.actionProgress === 'pending'}>
-<Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-</Visible>
+                                            <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                                        </Visible>
                                         <Visible visible={log.actionProgress === 'success'}>
-<CheckCircle2 className="w-4 h-4 text-emerald-500" />
-</Visible>
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                        </Visible>
                                         <Visible visible={log.actionProgress === 'error'}>
-<div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center text-white text-[10px]">
+                                            <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center text-white text-[10px]">
                                                 !
                                             </div>
-</Visible>
+                                        </Visible>
                                     </div>
                                     <div className="flex-1 break-all">
                                         <span className="font-medium text-zinc-500 mr-2 opacity-80">[{log.name}]</span>
@@ -109,10 +131,33 @@ export function CloneProgressDialog({ isOpen, onOpenChange, repoName }: ClonePro
                                 </div>
                             </div>
                         ))}
+
+                        {/* Indexing progress messages */}
+                        <Visible visible={indexingMessages.length > 0}>
+                            <div className="mt-3 border-t border-zinc-800 pt-3">
+                                {indexingMessages.map((message, index) => (
+                                    <div key={`indexing-${index}`} className="flex items-start space-x-2">
+                                        <div className="mt-0.5 shrink-0">
+                                            <Visible visible={isIndexing && index === indexingMessages.length - 1}>
+                                                <Loader2 className="w-4 h-4 text-purple-500 animate-spin" />
+                                            </Visible>
+                                            <Visible visible={!isIndexing || index !== indexingMessages.length - 1}>
+                                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                            </Visible>
+                                        </div>
+                                        <div className="flex-1 break-all">
+                                            <span className="font-medium text-zinc-500 mr-2 opacity-80">[Indexing]</span>
+                                            <span className="text-purple-300">{message}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </Visible>
+
                         <div ref={bottomRef} />
                     </div>
 
-                    <Visible visible={logs.length === 0}>
+                    <Visible visible={logs.length === 0 && indexingMessages.length === 0}>
                         <div className="h-full flex items-center justify-center text-zinc-600 italic">
                             Awaiting logs...
                         </div>

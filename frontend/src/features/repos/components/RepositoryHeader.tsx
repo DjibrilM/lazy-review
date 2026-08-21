@@ -75,11 +75,11 @@ export function RepositoryHeader({
             {/* Repository actions */}
             <div className="flex shrink-0 items-center gap-2">
                 <Visible visible={isFetching && !isLoading}>
-<div className="mr-1 hidden items-center gap-1.5 text-[10px] text-muted-foreground sm:flex">
+                    <div className="mr-1 hidden items-center gap-1.5 text-[10px] text-muted-foreground sm:flex">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         <span>Refreshing</span>
                     </div>
-</Visible>
+                </Visible>
 
                 <Button
                     variant="outline"
@@ -91,11 +91,10 @@ export function RepositoryHeader({
                     <Visible visible={isCurrentlyIndexing} fallback={(
                         <RefreshCw className="h-3.5 w-3.5" />
                     )}>
-                        (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-</Visible>
+                    </Visible>
                     <Visible visible={isCurrentlyIndexing} fallback={'Re-index'}>
-                        'Indexing…'
+                        Indexing…
                     </Visible>
                 </Button>
 
@@ -110,9 +109,8 @@ export function RepositoryHeader({
                             <Visible visible={isDeleting} fallback={(
                                 <Trash2 className="h-3.5 w-3.5" />
                             )}>
-                                (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-</Visible>
+                            </Visible>
                             Delete
                         </Button>
                     </DialogTrigger>

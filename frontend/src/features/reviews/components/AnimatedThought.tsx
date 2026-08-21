@@ -46,12 +46,11 @@ export function AnimatedThought({
                 <Visible visible={isActive} fallback={(
                     <BrainCircuit className="h-3 w-3" />
                 )}>
-                    (
                     <Loader2 className="h-3 w-3 animate-spin" />
-</Visible>
+                </Visible>
 
                 <span><Visible visible={isActive} fallback={'Reasoning'}>
-                    'Thinking'
+                    Thinking
                 </Visible></span>
 
                 <Visible visible={isActive}>
@@ -61,9 +60,8 @@ export function AnimatedThought({
                 <Visible visible={isOpen} fallback={(
                     <ChevronRight className="ml-auto h-3 w-3" />
                 )}>
-                    (
                     <ChevronDown className="ml-auto h-3 w-3" />
-</Visible>
+                </Visible>
             </button>
 
             <div

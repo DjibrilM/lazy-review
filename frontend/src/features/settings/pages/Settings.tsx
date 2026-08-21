@@ -10,6 +10,9 @@ import { ModelItem } from '../components/ModelItem';
 import { Divider, InfoRow, LoadingRow, SectionError, SettingsSection } from '../components';
 import { HardwareSectionContent } from '../components/HardwareSectionContent';
 import Visible from "@/components/common/Visible";
+import { authService } from '@/services/auth.service';
+import { githubService } from '@/services/github.service';
+import { GithubLoginModal } from '../../../components/GithubLoginModal';
 
 interface ModelInfo {
     id: string;
@@ -38,7 +41,38 @@ export const Settings = () => {
     const [isUpdatingGpu, setIsUpdatingGpu] = useState(false);
     const [gpuError, setGpuError] = useState<string | null>(null);
 
+    const { data: baseSettings } = useQuery({
+        queryKey: ['baseSettings'],
+        queryFn: async () => {
+            const res = await http.get<{ data: { useExperimentalGpu: boolean } }>('/settings');
+            return res.data.data;
+        },
+    });
+
+    React.useEffect(() => {
+        if (baseSettings !== undefined) {
+            setUseExperimentalGpu(baseSettings.useExperimentalGpu);
+        }
+    }, [baseSettings]);
+
     const [modelErrors, setModelErrors] = useState<Record<string, string | undefined>>({});
+    const [loginModalOpen, setLoginModalOpen] = useState(false);
+
+    const { data: userProfile, refetch: refetchProfile } = useQuery({
+        queryKey: ['github-authenticated-user'],
+        queryFn: () => githubService.getUserProfile('me'),
+        retry: false,
+    });
+
+    const handleLogout = async () => {
+        if (!window.confirm('Are you sure you want to log out from GitHub?')) return;
+        try {
+            await authService.logout();
+            window.location.reload();
+        } catch (error) {
+            console.error('Logout failed', error);
+        }
+    };
 
     const {
         data: models,
@@ -195,6 +229,43 @@ export const Settings = () => {
                         </React.Fragment>
                     ))}
                 </SettingsSection>
+
+                <SettingsSection title="GitHub Authentication" footer="Lazy Review needs access to your GitHub account to read repositories and post PR reviews.">
+                    <div className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-3">
+                            <Visible visible={!!userProfile?.avatar_url} fallback={<div className="h-10 w-10 rounded-full bg-accent animate-pulse" />}>
+                                <img src={userProfile?.avatar_url} alt={userProfile?.login} className="h-10 w-10 rounded-full border border-border" />
+                            </Visible>
+                            <div className="flex flex-col">
+                                <span className="text-[17px] font-medium tracking-[-0.41px] text-foreground">
+                                    {userProfile?.name || userProfile?.login || 'Loading...'}
+                                </span>
+                                <span className="text-[15px] tracking-[-0.24px] text-muted-foreground">
+                                    @{userProfile?.login}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setLoginModalOpen(true)}
+                                className="text-[15px] font-medium text-primary hover:text-primary/80 transition-colors"
+                            >
+                                Re-authenticate
+                            </button>
+                            <button
+                                onClick={handleLogout}
+                                className="text-[15px] font-medium text-destructive hover:text-destructive/80 transition-colors"
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+                </SettingsSection>
+                <GithubLoginModal
+                    open={loginModalOpen}
+                    onOpenChange={setLoginModalOpen}
+                    onSuccess={() => refetchProfile()}
+                />
 
                 <SettingsSection title="Hardware" footer={<>CPU inference is the default and most stable option. Experimental GPU acceleration may behave differently depending on your hardware.</>}>
                     <HardwareSectionContent
