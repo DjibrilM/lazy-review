@@ -413,7 +413,7 @@ export class ChatAgent extends BaseAgent {
     // Dynamically select a smaller tool subset based on user intent.
     const runtimeTools = selectTools(userMessage, allTools);
 
-    const systemPrompt = `You are Cactus Review, a code-review assistant embedded in a PR review tool.
+    const systemPrompt = `You are Lazy Review, a code-review assistant embedded in a PR review tool.
 
 ## CRITICAL: You MUST use tools to gather information. Never describe or plan to use a tool — actually call it.
 
@@ -599,11 +599,13 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
       // didn't parse into structured toolCall events. Local models frequently
       // emit tool calls as JSON text.
       let toolCalls: any[] = structuredToolCalls;
+      let isFallback = false;
 
       if (toolCalls.length === 0) {
         const parsedFallback = parseFallbackToolCalls(rawText || streamedContent);
 
         if (parsedFallback.length > 0) {
+          isFallback = true;
           console.log(
             `🧰 [ChatAgent] Parsed ${parsedFallback.length} tool call(s) from raw text fallback`,
           );
@@ -628,6 +630,7 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
       contextManager.addRecent({
         role: 'assistant',
         content: stripToolCallMarkers(rawText || streamedContent),
+        ...(isFallback ? {} : { toolCalls }),
       });
 
       // Tools that mutate state or require user confirmation must run serially.
@@ -667,8 +670,11 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         }
 
         contextManager.addRecent({
-          role: 'tool',
-          content: serializeToolResult(result),
+          role: isFallback ? 'user' : 'tool',
+          ...(isFallback ? {} : { toolCallId: toolCall.id }),
+          content: isFallback
+            ? `[Tool Result for ${toolCall.name}]:\n\n${serializeToolResult(result)}`
+            : serializeToolResult(result),
         });
       }
 
@@ -684,8 +690,11 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         }
 
         contextManager.addRecent({
-          role: 'tool',
-          content: serializeToolResult(result),
+          role: isFallback ? 'user' : 'tool',
+          ...(isFallback ? {} : { toolCallId: toolCall.id }),
+          content: isFallback
+            ? `[Tool Result for ${toolCall.name}]:\n\n${serializeToolResult(result)}`
+            : serializeToolResult(result),
         });
       }
 

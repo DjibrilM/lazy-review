@@ -34,6 +34,7 @@ export class MainModule {
 
     console.log(chalk.cyan('Initializing API and services...'));
     await this.server.start();
+    await this.github.init();
 
     if (this.server.httpServer) {
       this.socket = new SocketModule(this.server.httpServer, this);

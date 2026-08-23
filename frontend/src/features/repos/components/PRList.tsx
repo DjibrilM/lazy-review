@@ -13,7 +13,7 @@ import { githubService } from '@/services/github.service';
 import { cn } from '@/lib/util/shared';
 import Visible from "@/components/common/Visible";
 
-type PRFilter = 'open' | 'closed';
+type PRFilter = 'open' | 'closed' | 'merged';
 
 interface PRListProps {
     onSelectPR: (pr: any) => void;
@@ -75,12 +75,22 @@ export function PRList({
     );
 
     const closedCount = useMemo(
-        () => prs.filter((pr: any) => pr.state === 'closed').length,
+        () => prs.filter((pr: any) => pr.state === 'closed' && !pr.merged_at && !pr.merged).length,
+        [prs],
+    );
+
+    const mergedCount = useMemo(
+        () => prs.filter((pr: any) => pr.state === 'closed' && (pr.merged_at || pr.merged)).length,
         [prs],
     );
 
     const visiblePullRequests = useMemo(
-        () => prs.filter((pr: any) => pr.state === filter),
+        () => prs.filter((pr: any) => {
+            if (filter === 'open') return pr.state === 'open';
+            if (filter === 'merged') return pr.state === 'closed' && (pr.merged_at || pr.merged);
+            if (filter === 'closed') return pr.state === 'closed' && !pr.merged_at && !pr.merged;
+            return false;
+        }),
         [prs, filter],
     );
 
@@ -122,6 +132,20 @@ export function PRList({
                 >
                     <GitPullRequest className="h-3.5 w-3.5" />
                     {openCount} Open
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setFilter('merged')}
+                    className={cn(
+                        'inline-flex items-center gap-1.5 text-xs transition-colors',
+                        filter === 'merged'
+                            ? 'font-semibold text-foreground'
+                            : 'font-medium text-muted-foreground hover:text-foreground',
+                    )}
+                >
+                    <GitMerge className="h-3.5 w-3.5" />
+                    {mergedCount} Merged
                 </button>
 
                 <button

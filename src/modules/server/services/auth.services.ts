@@ -31,7 +31,7 @@ export class AuthService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        client_id: process.env.GITHUB_CLIENT_ID || GITHUB_CLIENT_ID,
+        client_id: GITHUB_CLIENT_ID,
         scope: 'repo',
       }),
     });
@@ -51,7 +51,7 @@ export class AuthService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        client_id: process.env.GITHUB_CLIENT_ID || GITHUB_CLIENT_ID,
+        client_id: GITHUB_CLIENT_ID,
         device_code: deviceCode,
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
       }),
@@ -62,7 +62,9 @@ export class AuthService {
     }
 
     const data = await response.json();
-    console.log('[AuthService] Poll response:', data);
+    if (data.error !== 'authorization_pending') {
+      console.log('[AuthService] Poll response:', data);
+    }
 
     if (data.access_token) {
       const settings = await this.getSettings();

@@ -25,7 +25,7 @@ export async function loadAIModels(mainModule: MainModule, activeRequestIds: Set
   const settingsRepo = mainModule.database.appDataSource.getRepository(SettingsEntity);
   let settings = await settingsRepo.findOneBy({ id: 1 });
   if (!settings) {
-    settings = settingsRepo.create({ id: 1, useExperimentalGpu: false });
+    settings = settingsRepo.create({ id: 1, useExperimentalGpu: true });
     await settingsRepo.save(settings);
   }
 

@@ -9,8 +9,10 @@ Lazy Review is an offline-first AI code reviewer. It provides a full-stack envir
 ## 🚀 Features
 
 - **Local & Offline AI Reviews:** Built-in integration with the QVAC SDK for fully offline AI code reviews, ensuring complete privacy.
+- **Automated PR Review Pipeline:** A multi-agent ReAct (Reasoning + Acting) pipeline that autonomously analyzes Pull Requests, gathers evidence across your codebase, and adversarialy verifies findings before reporting.
+- **Resilient Local LLM Execution:** Features a robust JSON fallback parser that seamlessly intercepts raw text tool calls from local models and dynamically injects results, completely bypassing strict API structural validations.
 - **Repository Management:** Easily connect to GitHub, download repositories, and manage your local codebases via an intuitive React UI.
-- **Semantic Code Search:** Leverages local vector embeddings to allow you to semantically search your codebase.
+- **Semantic Code Search:** Leverages local vector embeddings to allow you to semantically search your codebase. Optimized text bounds guarantee safe tokenization even for models with small (e.g. 512) context windows.
 - **100% Offline AI Support:** Built exclusively on top of the QVAC SDK, ensuring your code never leaves your local machine.
 
 ## 🛠️ Tech Stack & Architecture
@@ -33,6 +35,28 @@ Lazy Review uses a full-stack architecture designed for local AI inference:
 
 - **React & Vite:** A web UI scaffolding.
 - **Component Architecture:** A highly modular, responsive design (featuring Dark/Light modes) with tailored components for the Dashboard, Deployment Terminal, AI Provider settings, and Repo Selection.
+
+## ⚠️ Performance & Hardware Limitations
+
+### Testing Environment
+
+This application was actively developed and tested on a **Mac Mini** (Apple Silicon).
+
+### GPU vs CPU Inference
+
+By default, **GPU inference is enabled** for all AI model execution to ensure the highest possible performance and speed. However, we provide a built-in feature to toggle between GPU and CPU inference via the application settings.
+
+### Limitations for Lower-End Devices
+
+Running an autonomous, multi-agent AI pipeline locally is a highly resource-intensive task:
+
+- Lower-end devices or machines lacking a dedicated GPU/Apple Silicon may struggle to execute the review pipeline smoothly.
+- **Context Size Constraints**: While we have optimized token chunking for semantic embeddings to fit safely within a 512-token context window, processing large pull requests still requires substantial RAM and compute overhead.
+- You may experience significantly longer wait times or out-of-memory (OOM) crashes if your device has limited memory.
+
+### Known GPU Issues (The "Old GPU Problem")
+
+Older GPUs or unsupported drivers may experience failures when attempting to load large quantized language models or embedding models into VRAM. If the application crashes during model initialization, please switch to **CPU Inference** in the settings. This bypasses the GPU entirely at the cost of slower inference speeds.
 
 ## 📦 Getting Started
 

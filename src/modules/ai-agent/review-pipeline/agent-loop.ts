@@ -1,6 +1,7 @@
 import { completion } from '@qvac/sdk';
 
 export interface ParsedToolCall {
+  id?: string;
   name: string;
   arguments: Record<string, unknown>;
 }
@@ -146,6 +147,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     const structured = await (result?.toolCalls ?? Promise.resolve([]));
     if (structured?.length > 0) {
       calls = structured.map((c: any) => ({
+        id: c.id,
         name: c.name || c.function?.name || '',
         arguments: normalizeArgs(c.arguments || c.function?.arguments || c.args || {}),
       }));
@@ -158,7 +160,11 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       break;
     }
 
-    history.push({ role: 'assistant', content: rawText });
+    history.push({
+      role: 'assistant',
+      content: rawText,
+      ...(structured?.length > 0 ? { toolCalls: structured } : {}),
+    });
 
     let stop = false;
 
@@ -169,8 +175,11 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       const tool = tools.find((t) => t.name === call.name);
       if (!tool) {
         history.push({
-          role: 'tool',
-          content: JSON.stringify({ error: `Unknown tool: ${call.name}` }),
+          role: call.id ? 'tool' : 'user',
+          ...(call.id ? { toolCallId: call.id } : {}),
+          content: call.id
+            ? JSON.stringify({ error: `Unknown tool: ${call.name}` })
+            : `[Tool Error for ${call.name}]: Unknown tool`,
         });
         continue;
       }
@@ -183,8 +192,13 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
         sourceTokensUsed += estimateTokens(resultValue);
         toolResults.push({ name: call.name, args: call.arguments, result: resultValue });
         history.push({
-          role: 'tool',
-          content: typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue),
+          role: call.id ? 'tool' : 'user',
+          ...(call.id ? { toolCallId: call.id } : {}),
+          content: call.id
+            ? typeof resultValue === 'string'
+              ? resultValue
+              : JSON.stringify(resultValue)
+            : `[Tool Result for ${call.name}]:\n\n${typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue)}`,
         });
 
         if (shouldStopAfter && shouldStopAfter(call.name, resultValue)) {
@@ -192,7 +206,13 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
           break;
         }
       } catch (e: any) {
-        history.push({ role: 'tool', content: JSON.stringify({ error: e?.message || String(e) }) });
+        history.push({
+          role: call.id ? 'tool' : 'user',
+          ...(call.id ? { toolCallId: call.id } : {}),
+          content: call.id
+            ? JSON.stringify({ error: e?.message || String(e) })
+            : `[Tool Error for ${call.name}]: ${e?.message || String(e)}`,
+        });
       }
     }
 

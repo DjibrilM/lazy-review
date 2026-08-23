@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authService } from '@/services/auth.service';
-import { Loader2 } from 'lucide-react';
 import { FaGithub } from "react-icons/fa";
+import { SplashScreen } from './SplashScreen';
 
 import { Button } from '@/components/ui/button';
 import { GithubLoginModal } from './GithubLoginModal';
@@ -16,13 +16,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     retry: false,
   });
 
-  // If loading the auth status, show a spinner
+  // If loading the auth status, show the splash screen
   if (isLoading) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <SplashScreen />;
   }
 
   // If authenticated, render the app normally

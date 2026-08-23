@@ -88,7 +88,7 @@ export class PrReviewAgent extends BaseAgent {
               ]
             }`;
 
-    const systemPrompt = `You are an expert autonomous code reviewer embedded in Cactus Review. You have access to the project's architectural manifest which describes the codebase conventions, patterns, and rules.
+    const systemPrompt = `You are an expert autonomous code reviewer embedded in Lazy Review. You have access to the project's architectural manifest which describes the codebase conventions, patterns, and rules.
 
             Your job is to review the provided pull request and identify ALL:
             1. Architectural violations (violations of the project's established conventions)
@@ -168,13 +168,7 @@ export class PrReviewAgent extends BaseAgent {
 
       Review this PR carefully and identify all issues. You may use tools (like read_file, get_pr_files, semantic_search) if you need additional codebase context. Output your JSON review when done.`;
 
-    const contextManager = new AgentContextManager(
-      systemPrompt,
-      llmId,
-      128000,
-      2500,
-      projectId.toString(),
-    );
+    const contextManager = new AgentContextManager(systemPrompt, llmId, 128000, 2500);
     contextManager.addRecent({ role: 'user', content: userMessage });
 
     const MAX_ITERATIONS = 15;
@@ -190,7 +184,6 @@ export class PrReviewAgent extends BaseAgent {
         tools: runtimeTools as any,
         toolDialect: 'json',
         stream: false,
-        kvCache: projectId.toString(),
       });
 
       const result = await this.awaitCompletion(run);
@@ -282,7 +275,6 @@ export class PrReviewAgent extends BaseAgent {
         modelId: llmId,
         history: contextManager.buildHistory(),
         stream: false,
-        kvCache: projectId.toString(),
       });
       const finalResult = await this.awaitCompletion(finalRun);
       try {

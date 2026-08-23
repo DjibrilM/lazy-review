@@ -7,10 +7,14 @@ export function AIReviewSessionDialog({
     prToOpen,
     onClose,
     onSelectPR,
+    isCurrentlyIndexing,
+    isIndexed,
 }: {
     prToOpen: any;
     onClose: () => void;
     onSelectPR: (pr: any, startFresh: boolean) => void;
+    isCurrentlyIndexing: boolean;
+    isIndexed: boolean;
 }) {
     return (
         <Dialog open={!!prToOpen} onOpenChange={(open) => !open && onClose()}>
@@ -30,38 +34,53 @@ export function AIReviewSessionDialog({
                         </div>
 
                         <p className="text-sm text-muted-foreground">
-                            <Visible visible={prToOpen?.hasExistingReview} fallback={"No existing review found for this pull request. Start a new AI review session to analyze the changes."}>
-                                "An active AI review session exists for this pull request. You can continue from where you left off or start a fresh review."
+                            <Visible visible={isCurrentlyIndexing}>
+                                "Indexing is currently in progress. Please wait for it to finish before starting a review."
+                            </Visible>
+                            <Visible visible={!isCurrentlyIndexing && !isIndexed}>
+                                "Repository must be indexed before starting a review. Please index the repository first."
+                            </Visible>
+                            <Visible visible={!isCurrentlyIndexing && isIndexed}>
+                                <Visible visible={prToOpen?.hasExistingReview} fallback={"No existing review found for this pull request. Start a new AI review session to analyze the changes."}>
+                                    "An active AI review session exists for this pull request. You can continue from where you left off or start a fresh review."
+                                </Visible>
                             </Visible>
                         </p>
 
                         <div className="flex flex-col space-y-3 pt-2">
-                            <Visible visible={prToOpen?.hasExistingReview} fallback={(
-                                <Button
-                                    onClick={() => onSelectPR(prToOpen, true)}
-                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                                >
-                                    <Play className="w-4 h-4 mr-2" />
-                                    Start Review
-                                </Button>
-                            )}>
-                                <>
+                            <Visible visible={isCurrentlyIndexing || !isIndexed} fallback={(
+                                <Visible visible={prToOpen?.hasExistingReview} fallback={(
                                     <Button
-                                        onClick={() => onSelectPR(prToOpen, false)}
+                                        onClick={() => onSelectPR(prToOpen, true)}
                                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                                     >
                                         <Play className="w-4 h-4 mr-2" />
-                                        Continue Review
+                                        Start Review
                                     </Button>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => onSelectPR(prToOpen, true)}
-                                        className="w-full"
-                                    >
-                                        <Bot className="w-4 h-4 mr-2" />
-                                        Start New Review
-                                    </Button>
-                                </>
+                                )}>
+                                    <>
+                                        <Button
+                                            onClick={() => onSelectPR(prToOpen, false)}
+                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        >
+                                            <Play className="w-4 h-4 mr-2" />
+                                            Continue Review
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => onSelectPR(prToOpen, true)}
+                                            className="w-full"
+                                        >
+                                            <Bot className="w-4 h-4 mr-2" />
+                                            Start New Review
+                                        </Button>
+                                    </>
+                                </Visible>
+                            )}>
+                                <Button disabled className="w-full">
+                                    <Bot className="w-4 h-4 mr-2" />
+                                    {isCurrentlyIndexing ? 'Wait for indexing...' : 'Index first'}
+                                </Button>
                             </Visible>
                         </div>
                     </div>

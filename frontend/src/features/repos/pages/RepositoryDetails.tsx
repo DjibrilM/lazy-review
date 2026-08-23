@@ -317,6 +317,8 @@ export function RepositoryDetails() {
         onSelectPR={
           handleSelectPR
         }
+        isCurrentlyIndexing={isCurrentlyIndexing}
+        isIndexed={Boolean(repo?.analysis && Object.keys(repo.analysis).length > 0)}
       />
     </div>
   );

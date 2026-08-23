@@ -5,7 +5,7 @@ export default class SettingsEntity {
   @PrimaryColumn({ default: 1 })
   id: number;
 
-  @Column({ default: false })
+  @Column({ default: true })
   useExperimentalGpu: boolean;
 
   @Column({ default: 0 })

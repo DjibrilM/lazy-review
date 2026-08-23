@@ -16,6 +16,7 @@ interface RepositoryHeaderProps {
     repo: {
         repository_url?: string;
         name: string;
+        last_indexing_duration_seconds?: number;
     };
     owner: string;
     isFetching: boolean;
@@ -67,8 +68,13 @@ export function RepositoryHeader({
                     </span>
                 </div>
 
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    Local repository context, pull requests, and indexed architecture.
+                <p className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span>Local repository context, pull requests, and indexed architecture.</span>
+                    <Visible visible={!isCurrentlyIndexing && repo.last_indexing_duration_seconds !== undefined && repo.last_indexing_duration_seconds !== null}>
+                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                            (Last indexed in {repo.last_indexing_duration_seconds}s)
+                        </span>
+                    </Visible>
                 </p>
             </div>
 

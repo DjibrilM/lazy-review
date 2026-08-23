@@ -61,6 +61,9 @@ class ProjectEntity extends BaseEntity {
 
   @Column({ type: 'simple-json', nullable: true })
   agent_messages: any[] | null;
+
+  @Column({ type: 'int', nullable: true })
+  last_indexing_duration_seconds: number | null;
 }
 
 export default ProjectEntity;
