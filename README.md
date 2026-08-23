@@ -39,18 +39,23 @@ Lazy Review uses a full-stack architecture designed for local AI inference:
 ## ⚠️ Performance & Hardware Limitations
 
 ### Testing Environment
+
 This application was actively developed and tested on a **Mac Mini** (Apple Silicon).
 
 ### GPU vs CPU Inference
+
 By default, **GPU inference is enabled** for all AI model execution to ensure the highest possible performance and speed. However, we provide a built-in feature to toggle between GPU and CPU inference via the application settings.
 
 ### Limitations for Lower-End Devices
+
 Running an autonomous, multi-agent AI pipeline locally is a highly resource-intensive task:
+
 - Lower-end devices or machines lacking a dedicated GPU/Apple Silicon may struggle to execute the review pipeline smoothly.
-- **Context Size Constraints**: While we have optimized token chunking for semantic embeddings to fit safely within a 512-token context window, processing large pull requests still requires substantial RAM and compute overhead. 
+- **Context Size Constraints**: While we have optimized token chunking for semantic embeddings to fit safely within a 512-token context window, processing large pull requests still requires substantial RAM and compute overhead.
 - You may experience significantly longer wait times or out-of-memory (OOM) crashes if your device has limited memory.
 
 ### Known GPU Issues (The "Old GPU Problem")
+
 Older GPUs or unsupported drivers may experience failures when attempting to load large quantized language models or embedding models into VRAM. If the application crashes during model initialization, please switch to **CPU Inference** in the settings. This bypasses the GPU entirely at the cost of slower inference speeds.
 
 ## 📦 Getting Started
