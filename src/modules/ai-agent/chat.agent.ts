@@ -672,7 +672,7 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         contextManager.addRecent({
           role: isFallback ? 'user' : 'tool',
           ...(isFallback ? {} : { toolCallId: toolCall.id }),
-          content: isFallback 
+          content: isFallback
             ? `[Tool Result for ${toolCall.name}]:\n\n${serializeToolResult(result)}`
             : serializeToolResult(result),
         });
@@ -692,7 +692,7 @@ ${context || 'No relevant semantic context found.'}${diffContext}${metaContext}`
         contextManager.addRecent({
           role: isFallback ? 'user' : 'tool',
           ...(isFallback ? {} : { toolCallId: toolCall.id }),
-          content: isFallback 
+          content: isFallback
             ? `[Tool Result for ${toolCall.name}]:\n\n${serializeToolResult(result)}`
             : serializeToolResult(result),
         });

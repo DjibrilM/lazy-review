@@ -8,10 +8,6 @@ import { projectService } from '@/services/project.service';
 import { getErrorMessage, shouldRetryRepositoryFetch } from '../utils/repo-utils';
 import { globalIndexingAtom, defaultIndexingState } from '../store/indexingStore';
 
-
-
-
-
 export function useRepository(id: string | undefined) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -37,18 +33,11 @@ export function useRepository(id: string | undefined) {
   });
 
   const currentState = id && globalState[id] ? globalState[id] : defaultIndexingState;
-  
-  const {
-    isReindexing,
-    indexingError,
-    indexingLog,
-    indexingThinking,
-    indexingDuration,
-  } = currentState;
+
+  const { isReindexing, indexingError, indexingLog, indexingThinking, indexingDuration } =
+    currentState;
 
   const isCurrentlyIndexing = isReindexing || repo?.current_task === 'indexing';
-
-
 
   const setIndexingError = (error: string | null) => {
     if (!id) return;
@@ -57,7 +46,7 @@ export function useRepository(id: string | undefined) {
       [id]: {
         ...(prev[id] || defaultIndexingState),
         indexingError: error,
-      }
+      },
     }));
   };
 
@@ -69,7 +58,7 @@ export function useRepository(id: string | undefined) {
         [repo.id]: {
           ...defaultIndexingState,
           isReindexing: true,
-        }
+        },
       }));
 
       await projectService.reindexProject(repo.id);
@@ -80,7 +69,7 @@ export function useRepository(id: string | undefined) {
         [repo.id]: {
           ...(prev[repo.id] || defaultIndexingState),
           isReindexing: false,
-        }
+        },
       }));
       toast.error(getErrorMessage(error, 'Failed to start indexing'));
     }
@@ -95,7 +84,7 @@ export function useRepository(id: string | undefined) {
         [repo.id]: {
           ...(prev[repo.id] || defaultIndexingState),
           isReindexing: false,
-        }
+        },
       }));
       toast.success('Indexing cancellation requested');
       void queryClient.invalidateQueries({ queryKey: ['local-project', id] });

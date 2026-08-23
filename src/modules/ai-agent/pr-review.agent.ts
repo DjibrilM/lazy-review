@@ -168,12 +168,7 @@ export class PrReviewAgent extends BaseAgent {
 
       Review this PR carefully and identify all issues. You may use tools (like read_file, get_pr_files, semantic_search) if you need additional codebase context. Output your JSON review when done.`;
 
-    const contextManager = new AgentContextManager(
-      systemPrompt,
-      llmId,
-      128000,
-      2500,
-    );
+    const contextManager = new AgentContextManager(systemPrompt, llmId, 128000, 2500);
     contextManager.addRecent({ role: 'user', content: userMessage });
 
     const MAX_ITERATIONS = 15;

@@ -160,10 +160,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       break;
     }
 
-    history.push({ 
-      role: 'assistant', 
+    history.push({
+      role: 'assistant',
       content: rawText,
-      ...(structured?.length > 0 ? { toolCalls: structured } : {})
+      ...(structured?.length > 0 ? { toolCalls: structured } : {}),
     });
 
     let stop = false;
@@ -177,7 +177,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
         history.push({
           role: call.id ? 'tool' : 'user',
           ...(call.id ? { toolCallId: call.id } : {}),
-          content: call.id 
+          content: call.id
             ? JSON.stringify({ error: `Unknown tool: ${call.name}` })
             : `[Tool Error for ${call.name}]: Unknown tool`,
         });
@@ -194,8 +194,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
         history.push({
           role: call.id ? 'tool' : 'user',
           ...(call.id ? { toolCallId: call.id } : {}),
-          content: call.id 
-            ? (typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue))
+          content: call.id
+            ? typeof resultValue === 'string'
+              ? resultValue
+              : JSON.stringify(resultValue)
             : `[Tool Result for ${call.name}]:\n\n${typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue)}`,
         });
 
@@ -204,10 +206,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
           break;
         }
       } catch (e: any) {
-        history.push({ 
-          role: call.id ? 'tool' : 'user', 
+        history.push({
+          role: call.id ? 'tool' : 'user',
           ...(call.id ? { toolCallId: call.id } : {}),
-          content: call.id 
+          content: call.id
             ? JSON.stringify({ error: e?.message || String(e) })
             : `[Tool Error for ${call.name}]: ${e?.message || String(e)}`,
         });

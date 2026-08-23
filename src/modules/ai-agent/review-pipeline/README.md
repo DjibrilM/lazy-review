@@ -52,10 +52,10 @@ while (iterations < maxIterations && toolCallsCount < maxToolCalls) {
 
     // 4. Append tool results. If the model natively supported tools, provide the toolCallId.
     // If it was a raw JSON fallback parse, pass the result as a 'user' message to bypass strict API validation.
-    history.push({ 
-      role: call.id ? 'tool' : 'user', 
+    history.push({
+      role: call.id ? 'tool' : 'user',
       ...(call.id ? { toolCallId: call.id } : {}),
-      content: typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue) 
+      content: typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue),
     });
   }
 }
