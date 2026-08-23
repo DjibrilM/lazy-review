@@ -88,7 +88,7 @@ export class PrReviewAgent extends BaseAgent {
               ]
             }`;
 
-    const systemPrompt = `You are an expert autonomous code reviewer embedded in Cactus Review. You have access to the project's architectural manifest which describes the codebase conventions, patterns, and rules.
+    const systemPrompt = `You are an expert autonomous code reviewer embedded in Lazy Review. You have access to the project's architectural manifest which describes the codebase conventions, patterns, and rules.
 
             Your job is to review the provided pull request and identify ALL:
             1. Architectural violations (violations of the project's established conventions)

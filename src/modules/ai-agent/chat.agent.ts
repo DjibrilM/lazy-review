@@ -413,7 +413,7 @@ export class ChatAgent extends BaseAgent {
     // Dynamically select a smaller tool subset based on user intent.
     const runtimeTools = selectTools(userMessage, allTools);
 
-    const systemPrompt = `You are Cactus Review, a code-review assistant embedded in a PR review tool.
+    const systemPrompt = `You are Lazy Review, a code-review assistant embedded in a PR review tool.
 
 ## CRITICAL: You MUST use tools to gather information. Never describe or plan to use a tool — actually call it.
 
