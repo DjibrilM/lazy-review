@@ -50,8 +50,13 @@ while (iterations < maxIterations && toolCallsCount < maxToolCalls) {
   for (const call of calls) {
     const resultValue = await tool.handler(call.arguments);
 
-    // 4. Append tool results to history for the next iteration
-    history.push({ role: 'tool', content: JSON.stringify(resultValue) });
+    // 4. Append tool results. If the model natively supported tools, provide the toolCallId.
+    // If it was a raw JSON fallback parse, pass the result as a 'user' message to bypass strict API validation.
+    history.push({ 
+      role: call.id ? 'tool' : 'user', 
+      ...(call.id ? { toolCallId: call.id } : {}),
+      content: typeof resultValue === 'string' ? resultValue : JSON.stringify(resultValue) 
+    });
   }
 }
 ```

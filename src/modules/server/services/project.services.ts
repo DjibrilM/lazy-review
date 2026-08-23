@@ -246,7 +246,7 @@ export class ProjectServices {
       const project = await ProjectEntity.findOne({ where: { id } });
       if (!project) return res.status(404).json({ message: 'Project not found' });
 
-      const prReviews = project.pr_reviews || {};
+      const prReviews = { ...(project.pr_reviews || {}) };
       if (prReviews[pull_number]) {
         delete prReviews[pull_number];
         project.pr_reviews = prReviews;
@@ -280,7 +280,7 @@ export class ProjectServices {
       }
 
       // Initialize state to running
-      const prReviews = project.pr_reviews || {};
+      const prReviews = { ...(project.pr_reviews || {}) };
       prReviews[prNumber] = { status: 'running' };
       project.pr_reviews = prReviews;
       await project.save();
@@ -300,7 +300,7 @@ export class ProjectServices {
           // Re-fetch project to avoid race conditions with other updates
           const p = await ProjectEntity.findOne({ where: { id: projectId } });
           if (p) {
-            const currentReviews = p.pr_reviews || {};
+            const currentReviews = { ...(p.pr_reviews || {}) };
             currentReviews[prNumber] = { status: 'success', review };
             p.pr_reviews = currentReviews;
             await p.save();
@@ -317,7 +317,7 @@ export class ProjectServices {
           console.error('Review generation failed:', err);
           const p = await ProjectEntity.findOne({ where: { id: projectId } });
           if (p) {
-            const currentReviews = p.pr_reviews || {};
+            const currentReviews = { ...(p.pr_reviews || {}) };
             currentReviews[prNumber] = { status: 'error', message: err.message };
             p.pr_reviews = currentReviews;
             await p.save();

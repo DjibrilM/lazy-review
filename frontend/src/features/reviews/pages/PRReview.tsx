@@ -66,7 +66,7 @@ export function PRReview() {
             pullRequest.number === pullNumber,
     );
 
-    const { data: commits = [] } = useQuery({
+    const { data: commits = [], isLoading: isLoadingCommits } = useQuery({
         queryKey: ['pr-commits', owner, repoName, pullNumber],
         queryFn: () => githubService.getPRCommits(owner, repoName, pullNumber),
         enabled: !!owner && !!repoName && !!pullNumber,
@@ -253,7 +253,7 @@ export function PRReview() {
     }, [messages]);
 
     useEffect(() => {
-        if (!pr || !repo || messages.length > 0) return;
+        if (!pr || !repo || messages.length > 0 || isLoadingCommits || isLoadingDiff) return;
 
         const fileCount = pr.changed_files ?? changedFiles.length;
 
@@ -267,6 +267,8 @@ export function PRReview() {
         addSystemMessage,
         commits.length,
         changedFiles.length,
+        isLoadingCommits,
+        isLoadingDiff,
     ]);
 
     if (isLoadingRepo || isLoadingPrs) {

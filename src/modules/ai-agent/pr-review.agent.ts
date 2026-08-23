@@ -173,7 +173,6 @@ export class PrReviewAgent extends BaseAgent {
       llmId,
       128000,
       2500,
-      projectId.toString(),
     );
     contextManager.addRecent({ role: 'user', content: userMessage });
 
@@ -190,7 +189,6 @@ export class PrReviewAgent extends BaseAgent {
         tools: runtimeTools as any,
         toolDialect: 'json',
         stream: false,
-        kvCache: projectId.toString(),
       });
 
       const result = await this.awaitCompletion(run);
@@ -282,7 +280,6 @@ export class PrReviewAgent extends BaseAgent {
         modelId: llmId,
         history: contextManager.buildHistory(),
         stream: false,
-        kvCache: projectId.toString(),
       });
       const finalResult = await this.awaitCompletion(finalRun);
       try {

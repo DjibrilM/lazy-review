@@ -173,6 +173,8 @@ export class CodeBaseIndexerAgent {
     };
 
     try {
+      const indexingStartTime = Date.now();
+
       // Emit an initial progress event immediately so the frontend
       // knows indexing has started even before models are loaded.
       progress('Starting indexing...');
@@ -260,7 +262,8 @@ export class CodeBaseIndexerAgent {
         for (const fact of facts) {
           checkCancelled();
 
-          const textForEmbedding = fact.embeddingText || fact.content;
+          const rawText = fact.embeddingText || fact.content;
+          const textForEmbedding = rawText.substring(0, 1200);
 
           if (!textForEmbedding.trim()) {
             continue;
@@ -458,7 +461,7 @@ export class CodeBaseIndexerAgent {
            * input so huge functions/classes do not overwhelm the
            * embedding model.
            */
-          const embeddingText = symbolContent.substring(0, 2_000);
+          const embeddingText = symbolContent.substring(0, 1200);
 
           facts.push({
             content: symbolContent,
@@ -577,6 +580,7 @@ export class CodeBaseIndexerAgent {
        */
       project.analysis = extractedFacts;
       project.indexing_version = indexingVersion;
+      project.last_indexing_duration_seconds = Math.round((Date.now() - indexingStartTime) / 1000);
 
       await project.save();
 

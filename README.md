@@ -9,8 +9,10 @@ Lazy Review is an offline-first AI code reviewer. It provides a full-stack envir
 ## 🚀 Features
 
 - **Local & Offline AI Reviews:** Built-in integration with the QVAC SDK for fully offline AI code reviews, ensuring complete privacy.
+- **Automated PR Review Pipeline:** A multi-agent ReAct (Reasoning + Acting) pipeline that autonomously analyzes Pull Requests, gathers evidence across your codebase, and adversarialy verifies findings before reporting.
+- **Resilient Local LLM Execution:** Features a robust JSON fallback parser that seamlessly intercepts raw text tool calls from local models and dynamically injects results, completely bypassing strict API structural validations.
 - **Repository Management:** Easily connect to GitHub, download repositories, and manage your local codebases via an intuitive React UI.
-- **Semantic Code Search:** Leverages local vector embeddings to allow you to semantically search your codebase.
+- **Semantic Code Search:** Leverages local vector embeddings to allow you to semantically search your codebase. Optimized text bounds guarantee safe tokenization even for models with small (e.g. 512) context windows.
 - **100% Offline AI Support:** Built exclusively on top of the QVAC SDK, ensuring your code never leaves your local machine.
 
 ## 🛠️ Tech Stack & Architecture
