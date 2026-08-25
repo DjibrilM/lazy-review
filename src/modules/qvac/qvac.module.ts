@@ -4,6 +4,7 @@ import os from 'os';
 import * as qvacModels from '@qvac/sdk';
 import { getModelInfo, downloadAsset, unloadModel } from '@qvac/sdk';
 import type { MainModule } from '../main.module.js';
+import { LLM_MODEL_ID, EMBEDDING_MODEL_ID } from '../../constants.js';
 
 export interface QvacModelConfig {
   id: string;
@@ -12,8 +13,8 @@ export interface QvacModelConfig {
 }
 
 export const QVAC_MODELS: QvacModelConfig[] = [
-  { id: 'QWEN3_4B_INST_Q4_K_M', name: 'Coding LLM (Qwen 3 4B)', requiredRamGb: 5 },
-  { id: 'GTE_LARGE_FP16', name: 'Embedding Model (GTE Large)', requiredRamGb: 2 },
+  { id: LLM_MODEL_ID, name: 'Coding LLM', requiredRamGb: 5 },
+  { id: EMBEDDING_MODEL_ID, name: 'Embedding Model', requiredRamGb: 2 },
 ];
 
 export class QvacModule {
@@ -32,11 +33,21 @@ export class QvacModule {
         let expectedSize = 0;
         let actualSize = 0;
         let isLoaded = false;
-        
+
+        const isCompatible = totalMemGb >= model.requiredRamGb;
+
         const qvacModelObject = (qvacModels as any)[model.id];
         if (!qvacModelObject) {
           console.warn(`Model object not found in SDK for ID: ${model.id}`);
-          return { ...model, isCompatible: false, totalMemGb: 0, isCached, expectedSize, actualSize, isLoaded };
+          return {
+            ...model,
+            isCompatible,
+            totalMemGb: Math.round(totalMemGb * 10) / 10,
+            isCached: true, // If it's a generic alias like coding-llm, assume the user configured it via QVAC config
+            expectedSize,
+            actualSize,
+            isLoaded: true,
+          };
         }
 
         try {
@@ -48,8 +59,6 @@ export class QvacModule {
         } catch (e) {
           console.warn(`Could not get model info for ${model.id}:`, e);
         }
-
-        const isCompatible = totalMemGb >= model.requiredRamGb;
 
         return {
           ...model,
@@ -80,7 +89,7 @@ export class QvacModule {
 
       const qvacModelObject = (qvacModels as any)[modelId];
       if (!qvacModelObject) {
-         throw new Error(`Model ${modelId} not found in qvac SDK exports`);
+        throw new Error(`Model ${modelId} not found in qvac SDK exports`);
       }
 
       await downloadAsset({
@@ -128,7 +137,7 @@ export class QvacModule {
     try {
       const qvacModelObject = (qvacModels as any)[modelId];
       if (!qvacModelObject) {
-         throw new Error(`Model ${modelId} not found in qvac SDK exports`);
+        throw new Error(`Model ${modelId} not found in qvac SDK exports`);
       }
 
       const info = await getModelInfo(qvacModelObject);

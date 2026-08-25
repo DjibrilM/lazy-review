@@ -4,8 +4,8 @@ import GithubModule from '../../github/github.module.js';
 class GithubServices {
   githubModule: GithubModule;
 
-  constructor() {
-    this.githubModule = new GithubModule();
+  constructor(githubModule: GithubModule) {
+    this.githubModule = githubModule;
   }
 
   async getUserRepositories({ page = 1 }: { page?: number }) {
@@ -38,7 +38,42 @@ class GithubServices {
     return this.githubModule.getPullRequests({ owner, repo });
   }
 
-  async handleOperation(req: Request, res: Response) {}
+  async getPRDiff({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }) {
+    return this.githubModule.getPRDiff({ owner, repo, pull_number });
+  }
+
+  async getPRCommits({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }) {
+    return this.githubModule.getPRCommits({ owner, repo, pull_number });
+  }
+
+  async submitPRReview(args: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+    body: string;
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+    comments?: { path: string; position?: number; line?: number; body: string }[];
+  }) {
+    return this.githubModule.submitPRReview(args);
+  }
+
+  async handleOperation(_req: any, _res: any) {}
 }
 
 export default GithubServices;

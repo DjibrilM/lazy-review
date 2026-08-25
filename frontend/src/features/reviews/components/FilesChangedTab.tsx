@@ -1,99 +1,319 @@
-import { FileText } from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronRight,
+    FileText,
+    Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/util/shared';
+import { useEffect, useMemo, useState } from 'react';
+import Visible from "@/components/common/Visible";
 
-const MOCK_DIFF = [
-  { type: 'header', content: '@@ -7,4 +7,16 @@', oldLine: null, newLine: null },
-  { type: 'unchanged', content: ' // Database connection initialized', oldLine: 7, newLine: 7 },
-  { type: 'unchanged', content: ' ', oldLine: 8, newLine: 8 },
-  { type: 'removed', content: '-function authenticate(username) {', oldLine: 9, newLine: null },
-  { type: 'removed', content: '-    return true;', oldLine: 10, newLine: null },
-  { type: 'removed', content: '-}', oldLine: 11, newLine: null },
-  {
-    type: 'added',
-    content: '+function authenticate(username, password) {',
-    oldLine: null,
-    newLine: 9,
-  },
-  { type: 'added', content: '+    // TODO: Hash password later', oldLine: null, newLine: 10 },
-  { type: 'added', content: '+    let db = getDbConnection();', oldLine: null, newLine: 11 },
-  {
-    type: 'added',
-    content:
-      '+    let query = "SELECT * FROM users WHERE username = \'" + username + "\' AND password = \'" + password + "\'";',
-    oldLine: null,
-    newLine: 12,
-  },
-  { type: 'added', content: '+    let result = db.execute(query);', oldLine: null, newLine: 13 },
-  { type: 'added', content: '+', oldLine: null, newLine: 14 },
-  { type: 'added', content: '+    if (result.length > 0) {', oldLine: null, newLine: 15 },
-  { type: 'added', content: '+        console.log("Login success");', oldLine: null, newLine: 16 },
-  { type: 'added', content: '+        return true;', oldLine: null, newLine: 17 },
-  { type: 'added', content: '+    } else {', oldLine: null, newLine: 18 },
-  { type: 'added', content: '+    }', oldLine: null, newLine: 19 },
-  { type: 'added', content: '+}', oldLine: null, newLine: 20 },
-];
+interface DiffLine {
+    type: 'header' | 'file' | 'added' | 'removed' | 'unchanged' | 'hunk';
+    content: string;
+    oldLine: number | null;
+    newLine: number | null;
+}
 
-export function FilesChangedTab() {
-  return (
-    <div className="h-full bg-background min-w-[600px] flex flex-col overflow-hidden relative">
-      <div className="bg-card border-b border-border px-4 py-2 text-sm text-muted-foreground flex justify-between items-center shrink-0">
-        <div className="flex items-center">
-          <FileText className="w-4 h-4 mr-2" />
-          <span className="font-mono text-card-foreground">src/database.js</span>
-        </div>
-        <div className="flex items-center space-x-3 text-xs font-mono">
-          <span className="text-emerald-500">+12 additions</span>
-          <span className="text-red-500">-3 deletions</span>
-        </div>
-      </div>
+interface FilePatch {
+    fileName: string;
+    additions: number;
+    deletions: number;
+    lines: DiffLine[];
+}
 
-      <div className="flex-1 overflow-auto bg-background p-4">
-        <div className="border border-border rounded-md overflow-hidden bg-background font-mono text-[13px] leading-5 shadow-lg">
-          {MOCK_DIFF.map((line, idx) => {
-            let rowBg = 'bg-transparent';
-            let textCol = 'text-foreground';
-            let lineNumBg = 'bg-background text-muted-foreground';
+/** Parse a unified diff string into file patches */
+function parseDiff(diff: string): FilePatch[] {
+    const files: FilePatch[] = [];
+    let current: FilePatch | null = null;
+    let oldLineNum = 0;
+    let newLineNum = 0;
 
-            if (line.type === 'header') {
-              rowBg = 'bg-muted';
-              textCol = 'text-muted-foreground';
-              lineNumBg = 'bg-muted text-muted-foreground border-none';
-            } else if (line.type === 'added') {
-              rowBg = 'bg-emerald-500/15';
-              textCol = 'text-emerald-300';
-              lineNumBg = 'bg-emerald-500/10 text-foreground';
-            } else if (line.type === 'removed') {
-              rowBg = 'bg-red-500/15';
-              textCol = 'text-red-300';
-              lineNumBg = 'bg-red-500/10 text-foreground';
+    for (const raw of diff.split('\n')) {
+        if (raw.startsWith('diff --git')) {
+            if (current) files.push(current);
+            current = { fileName: '', additions: 0, deletions: 0, lines: [] };
+            continue;
+        }
+
+        if (raw.startsWith('--- ') || raw.startsWith('+++ ')) {
+            if (current && raw.startsWith('+++ ')) {
+                current.fileName = raw.replace('+++ b/', '').replace('+++ ', '').trim();
+            }
+            continue;
+        }
+
+        if (raw.startsWith('@@')) {
+            const match = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+
+            if (match) {
+                oldLineNum = parseInt(match[1], 10);
+                newLineNum = parseInt(match[2], 10);
             }
 
-            return (
-              <div key={idx} className={cn('flex hover:bg-muted/50 group', rowBg)}>
-                <div
-                  className={cn(
-                    'w-10 text-right pr-2 py-0.5 select-none border-r border-border',
-                    lineNumBg,
-                    line.type === 'header' && 'border-r-0 w-20 text-left pl-4'
-                  )}
-                >
-                  {line.type !== 'header' && (line.oldLine || '')}
-                </div>
-                {line.type !== 'header' && (
-                  <div
-                    className={cn('w-10 text-right pr-2 py-0.5 select-none border-r border-border', lineNumBg)}
-                  >
-                    {line.newLine || ''}
-                  </div>
-                )}
-                <div className={cn('flex-1 pl-4 py-0.5 whitespace-pre', textCol)}>
-                  {line.content}
-                </div>
-              </div>
+            current?.lines.push({
+                type: 'hunk',
+                content: raw,
+                oldLine: null,
+                newLine: null,
+            });
+
+            continue;
+        }
+
+        if (!current) continue;
+
+        if (raw.startsWith('+')) {
+            current.lines.push({
+                type: 'added',
+                content: raw,
+                oldLine: null,
+                newLine: newLineNum++,
+            });
+            current.additions++;
+        } else if (raw.startsWith('-')) {
+            current.lines.push({
+                type: 'removed',
+                content: raw,
+                oldLine: oldLineNum++,
+                newLine: null,
+            });
+            current.deletions++;
+        } else if (raw.startsWith('\\')) {
+            // "No newline at end of file" marker — skip
+        } else {
+            current.lines.push({
+                type: 'unchanged',
+                content: raw,
+                oldLine: oldLineNum++,
+                newLine: newLineNum++,
+            });
+        }
+    }
+
+    if (current) files.push(current);
+
+    return files.filter((file) => file.fileName);
+}
+
+interface FilesChangedTabProps {
+    diff: string;
+    isLoading?: boolean;
+    selectedFileForDiff?: string | null;
+    onDiffScrolled?: () => void;
+}
+
+export function FilesChangedTab({
+    diff,
+    isLoading,
+    selectedFileForDiff,
+    onDiffScrolled,
+}: FilesChangedTabProps) {
+    const patches = useMemo(() => parseDiff(diff || ''), [diff]);
+
+    const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
+
+    const totalAdditions = useMemo(
+        () => patches.reduce((total, file) => total + file.additions, 0),
+        [patches],
+    );
+
+    const totalDeletions = useMemo(
+        () => patches.reduce((total, file) => total + file.deletions, 0),
+        [patches],
+    );
+
+    useEffect(() => {
+        if (!selectedFileForDiff) return;
+
+        setExpandedFiles((prev) => ({
+            ...prev,
+            [selectedFileForDiff]: true,
+        }));
+
+        const timeout = window.setTimeout(() => {
+            const el = document.getElementById(
+                `diff-file-${selectedFileForDiff}`,
             );
-          })}
+
+            if (el) {
+                el.scrollIntoView({
+                    behavior: 'auto',
+                    block: 'start',
+                });
+            }
+
+            onDiffScrolled?.();
+        }, 100);
+
+        return () => window.clearTimeout(timeout);
+    }, [selectedFileForDiff, onDiffScrolled]);
+
+    if (isLoading) {
+        return (
+            <div className="flex h-full items-center justify-center gap-2 bg-background text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-xs">Loading diff…</span>
+            </div>
+        );
+    }
+
+    if (!diff || patches.length === 0) {
+        return (
+            <div className="flex h-full items-center justify-center bg-background text-xs text-muted-foreground">
+                No changes to display.
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex h-full flex-col overflow-hidden bg-background">
+            {/* Summary bar */}
+            <div className="flex h-8 shrink-0 items-center gap-3 border-b border-border bg-card px-4 py-2 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>
+                        {patches.length} file<Visible visible={patches.length !== 1} fallback={''}>
+                            's'
+                        </Visible> changed
+                    </span>
+                </div>
+
+                <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                    +{totalAdditions}
+                </span>
+
+                <span className="font-mono text-red-600 dark:text-red-400">
+                    -{totalDeletions}
+                </span>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-auto p-4">
+                {patches.map((patch) => {
+                    const isExpanded = expandedFiles[patch.fileName] !== false;
+
+                    return (
+                        <section
+                            key={patch.fileName}
+                            id={`diff-file-${patch.fileName}`}
+                            className="overflow-hidden rounded-md border border-border bg-card"
+                        >
+                            {/* File header */}
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setExpandedFiles((prev) => ({
+                                        ...prev,
+                                        [patch.fileName]: !isExpanded,
+                                    }))
+                                }
+                                className="flex w-full items-center justify-between gap-3 border-b border-border bg-muted/20 px-3 py-2 text-left transition-colors hover:bg-muted/35"
+                            >
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <Visible visible={isExpanded} fallback={(
+                                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    )}>
+                                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    </Visible>
+
+                                    <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+
+                                    <span
+                                        className="truncate font-mono text-[11px] font-medium text-foreground"
+                                        title={patch.fileName}
+                                    >
+                                        {patch.fileName}
+                                    </span>
+                                </div>
+
+                                <div className="flex shrink-0 items-center gap-2 font-mono text-[10px]">
+                                    <span className="text-emerald-600 dark:text-emerald-400">
+                                        +{patch.additions}
+                                    </span>
+                                    <span className="text-red-600 dark:text-red-400">
+                                        -{patch.deletions}
+                                    </span>
+                                </div>
+                            </button>
+
+                            <Visible visible={isExpanded}>
+<div className="overflow-x-auto bg-background font-mono text-[11px] leading-5">
+                                    {patch.lines.map((line, lineIndex) => {
+                                        if (line.type === 'hunk') {
+                                            return (
+                                                <div
+                                                    key={lineIndex}
+                                                    className="border-y border-blue-500/10 bg-blue-500/[0.055] px-3 py-1 text-[10px] text-blue-700 dark:text-blue-300"
+                                                >
+                                                    {line.content}
+                                                </div>
+                                            );
+                                        }
+
+                                        const isAdded = line.type === 'added';
+                                        const isRemoved = line.type === 'removed';
+
+                                        const rowClass = isAdded
+                                            ? 'bg-emerald-500/[0.075]'
+                                            : isRemoved
+                                                ? 'bg-red-500/[0.075]'
+                                                : 'bg-background';
+
+                                        const gutterClass = isAdded
+                                            ? 'bg-emerald-500/[0.09]'
+                                            : isRemoved
+                                                ? 'bg-red-500/[0.09]'
+                                                : 'bg-muted/[0.12]';
+
+                                        const textClass = isAdded
+                                            ? 'text-emerald-950 dark:text-emerald-100'
+                                            : isRemoved
+                                                ? 'text-red-950 dark:text-red-100'
+                                                : 'text-foreground/90';
+
+                                        return (
+                                            <div
+                                                key={lineIndex}
+                                                className={cn(
+                                                    'group flex min-w-max hover:bg-muted/20',
+                                                    rowClass,
+                                                )}
+                                            >
+                                                <div
+                                                    className={cn(
+                                                        'w-11 shrink-0 select-none border-r border-border/60 px-2 py-0.5 text-right text-[10px] text-muted-foreground',
+                                                        gutterClass,
+                                                    )}
+                                                >
+                                                    {line.oldLine ?? ''}
+                                                </div>
+
+                                                <div
+                                                    className={cn(
+                                                        'w-11 shrink-0 select-none border-r border-border/60 px-2 py-0.5 text-right text-[10px] text-muted-foreground',
+                                                        gutterClass,
+                                                    )}
+                                                >
+                                                    {line.newLine ?? ''}
+                                                </div>
+
+                                                <div
+                                                    className={cn(
+                                                        'min-w-0 flex-1 whitespace-pre px-3 py-0.5',
+                                                        textClass,
+                                                    )}
+                                                >
+                                                    {line.content}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+</Visible>
+                        </section>
+                    );
+                })}
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }

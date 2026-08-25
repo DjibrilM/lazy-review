@@ -1,7 +1,7 @@
 import React from 'react';
 
 type Props = {
-  visible?: boolean;
+  visible?: any;
   fallback?: React.ReactNode;
   children?: React.ReactNode;
 };

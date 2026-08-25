@@ -8,27 +8,50 @@ import naclUtil from 'tweetnacl-util';
 import { type SimpleGit } from 'simple-git';
 import { simpleGit } from 'simple-git';
 import type { MainModule } from '../main.module.js';
+import SettingsEntity from '../server/entities/settings.entity.js';
 
 class GithubModule {
   octokit: Octokit;
   git: SimpleGit;
   userName: string;
   mainModule: MainModule;
+  private currentToken: string;
 
   constructor(mainModule?: MainModule) {
     if (mainModule) this.mainModule = mainModule;
-    console.log(process.env.GITHUB_TOKEN, 'repository');
+    this.currentToken = process.env.GITHUB_TOKEN || '';
     this.octokit = new Octokit({
-      auth: process.env.GITHUB_TOKEN,
+      auth: this.currentToken,
     });
 
     this.git = simpleGit({
-      config: [`http.extraHeader=Authorization: Bearer ${process.env.GITHUB_TOKEN}`],
+      config: [`http.extraHeader=Authorization: Bearer ${this.currentToken}`],
     });
   }
 
-  init() {
+  updateToken(token: string) {
+    this.currentToken = token;
+    this.octokit = new Octokit({
+      auth: token,
+    });
+    this.git = simpleGit({
+      config: [`http.extraHeader=Authorization: Bearer ${token}`],
+    });
+  }
+
+  async init() {
     console.log('GitHub module initialized');
+    if (this.mainModule && this.mainModule.database) {
+      try {
+        const repo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
+        const settings = await repo.findOneBy({ id: 1 });
+        if (settings?.githubToken) {
+          this.updateToken(settings.githubToken);
+        }
+      } catch (err) {
+        console.error('Failed to load github token from db', err);
+      }
+    }
   }
 
   async cloneRepository({
@@ -68,8 +91,8 @@ class GithubModule {
       fs.rmSync(repositoryPath, { recursive: true, force: true });
     }
 
-    const token = process.env.GITHUB_TOKEN || '';
-    
+    const token = this.currentToken;
+
     const gitWithProgress = simpleGit({
       progress: ({ method, stage, progress, processed, total }) => {
         if (this.mainModule) {
@@ -240,7 +263,7 @@ class GithubModule {
           .update(Buffer.concat([ephemeralKeyPair.publicKey, publicKeyBytes]))
           .digest();
         nonce = new Uint8Array(hash.slice(0, 24));
-      } catch (e) {
+      } catch {
         const hash = crypto
           .createHash('sha256')
           .update(Buffer.concat([ephemeralKeyPair.publicKey, publicKeyBytes]))
@@ -287,6 +310,95 @@ class GithubModule {
     return { data };
   }
 
+  async getPRDiff({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }): Promise<string> {
+    const response = await this.octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number,
+      mediaType: { format: 'diff' },
+    });
+    // Octokit returns the raw diff as a string when format: 'diff' is requested
+    return (response.data as unknown as string) || '';
+  }
+
+  async getPRCommits({
+    owner,
+    repo,
+    pull_number,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+  }) {
+    const { data } = await this.octokit.rest.pulls.listCommits({
+      owner,
+      repo,
+      pull_number,
+      per_page: 50,
+    });
+    return {
+      data: data.map((c) => ({
+        sha: c.sha.substring(0, 7),
+        message: c.commit.message.split('\n')[0], // first line only
+        author: c.commit.author?.name || c.commit.author?.email || 'unknown',
+        date: c.commit.author?.date || '',
+      })),
+    };
+  }
+
+  async submitPRReview({
+    owner,
+    repo,
+    pull_number,
+    body,
+    event,
+    comments,
+  }: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+    body: string;
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+    comments?: { path: string; position?: number; line?: number; body: string }[];
+  }) {
+    try {
+      const { data } = await this.octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number,
+        body,
+        event,
+        comments: comments || [],
+      });
+      return { data };
+    } catch (error: any) {
+      if (
+        error.status === 422 &&
+        (error.message?.includes('Can not request changes on your own pull request') ||
+          error.message?.includes('Can not approve your own pull request'))
+      ) {
+        console.warn(`Cannot ${event} on own pull request. Falling back to COMMENT event.`);
+        const { data } = await this.octokit.rest.pulls.createReview({
+          owner,
+          repo,
+          pull_number,
+          body,
+          event: 'COMMENT',
+          comments: comments || [],
+        });
+        return { data };
+      }
+      throw error;
+    }
+  }
 }
 
 export default GithubModule;
