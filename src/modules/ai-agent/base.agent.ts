@@ -1,8 +1,8 @@
-import { embed, loadModel, unloadModel } from '@qvac/sdk';
+import { embed, unloadModel } from '@qvac/sdk';
 import * as qvacModels from '@qvac/sdk';
 import type { MainModule } from '../main.module.js';
 import { LLM_MODEL_ID, EMBEDDING_MODEL_ID } from '../../constants.js';
-import SettingsEntity from '../server/entities/settings.entity.js';
+import { loadAIModels } from './model-loader.js';
 
 const REVIEW_TIMEOUT_MS = 600_000; // 10 min for CPU inference
 
@@ -19,62 +19,20 @@ export abstract class BaseAgent {
       return BaseAgent.cachedModelIds;
     }
 
-    const settingsRepo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
-    let settings = await settingsRepo.findOneBy({ id: 1 });
-    if (!settings) {
-      settings = settingsRepo.create({ id: 1, useExperimentalGpu: false });
-      await settingsRepo.save(settings);
-    }
-    const useGpu = Boolean(settings.useExperimentalGpu);
-    const deviceConfig = useGpu ? undefined : 'cpu';
-    BaseAgent.currentDevice = useGpu ? 'GPU' : 'CPU';
+    // Delegate to the shared loader used by the indexer and the boot-time
+    // preload. That loader caches the resolved registry IDs process-wide and
+    // reads the device setting once, so review/chat reuse the SAME already
+    // loaded instances instead of issuing a redundant loadModel round-trip.
+    const { llmModelId, embeddingModelId } = await loadAIModels(
+      this.mainModule,
+      new Set<string>(),
+    );
 
-    const LLM_CTX_SIZE = 128000;
-    let llmId: string = (qvacModels as any)[LLM_MODEL_ID]?.modelId ?? LLM_MODEL_ID;
-    let embeddingId: string =
-      (qvacModels as any)[EMBEDDING_MODEL_ID]?.modelId ?? EMBEDDING_MODEL_ID;
+    BaseAgent.cachedModelIds = {
+      llmId: llmModelId,
+      embeddingId: embeddingModelId,
+    };
 
-    const qvacLlm = (qvacModels as any)[LLM_MODEL_ID];
-    const qvacEmbedding = (qvacModels as any)[EMBEDDING_MODEL_ID];
-
-    if (qvacLlm) {
-      try {
-        llmId = await loadModel({
-          modelSrc: qvacLlm,
-          modelConfig: {
-            ctx_size: LLM_CTX_SIZE,
-            ...(deviceConfig ? { device: deviceConfig } : {}),
-          },
-        });
-      } catch (e: any) {
-        if (e?.code !== 52200) throw e; // 52200 = already loaded
-        const info = await qvacModels.getModelInfo(qvacLlm);
-        if (info.loadedInstances && info.loadedInstances.length > 0) {
-          llmId = info.loadedInstances[0].registryId;
-        } else if (qvacLlm.modelId) {
-          llmId = qvacLlm.modelId;
-        }
-      }
-    }
-
-    if (qvacEmbedding) {
-      try {
-        embeddingId = await loadModel({
-          modelSrc: qvacEmbedding,
-          modelConfig: { ...(deviceConfig ? { device: deviceConfig } : {}) },
-        });
-      } catch (e: any) {
-        if (e?.code !== 52200) throw e;
-        const info = await qvacModels.getModelInfo(qvacEmbedding);
-        if (info.loadedInstances && info.loadedInstances.length > 0) {
-          embeddingId = info.loadedInstances[0].registryId;
-        } else if (qvacEmbedding.modelId) {
-          embeddingId = qvacEmbedding.modelId;
-        }
-      }
-    }
-
-    BaseAgent.cachedModelIds = { llmId, embeddingId };
     return BaseAgent.cachedModelIds;
   }
 
@@ -104,7 +62,32 @@ export abstract class BaseAgent {
     query: string,
   ): Promise<string> {
     try {
-      const embedResult = await embed({ modelId: gteId, text: query.substring(0, 1500) });
+      const queryText = query.substring(0, 800);
+      let embedResult;
+
+      // GTE-Large rejects inputs that tokenize beyond its 512-token context
+      // window. Shrink the query defensively if the runtime reports overflow.
+      for (let attempt = queryText, i = 0; i < 5; i++) {
+        try {
+          embedResult = await embed({ modelId: gteId, text: attempt });
+          break;
+        } catch (error: any) {
+          const message = String(error?.message || error || '');
+          if (!/context\s?overflow|tokenizeInput|effective context size/i.test(message)) {
+            throw error;
+          }
+          const shrunkLength = Math.max(64, Math.floor(attempt.length * 0.6));
+          if (shrunkLength >= attempt.length) throw error;
+          console.warn(
+            `[Embedding] Semantic-search query overflow detected (${message}), ` +
+              `shrinking input ${attempt.length} → ${shrunkLength} chars and retrying (attempt ${i + 1})`,
+          );
+          attempt = attempt.substring(0, shrunkLength);
+        }
+      }
+
+      if (!embedResult) return '';
+
       const facts = await this.mainModule.database.vectorDatabase.searchFacts(
         projectId,
         embedResult.embedding as number[],

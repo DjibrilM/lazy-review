@@ -57,7 +57,7 @@ export const LocalModelsSection = ({
                                 <div className="truncate text-[16px] leading-6">{model.name}</div>
                                 <div className="truncate text-[13px] leading-[18px] text-muted-foreground">
                                     <Visible visible={model.isCached} fallback={`Requires ~${model.requiredRamGb} GB RAM`}>
-                                        `${model.actualSize} MB`
+                                        ${model.actualSize} MB
                                     </Visible>
                                 </div>
                             </div>
@@ -68,8 +68,8 @@ export const LocalModelsSection = ({
                                 <Download className="h-4 w-4 animate-bounce text-blue-500" />
                             </Visible>
                             <Visible visible={downloads[model.id]?.status === 'downloading'}>
-<span className="text-[14px] tabular-nums text-muted-foreground">{downloads[model.id]?.progress}%</span>
-</Visible>
+                                <span className="text-[14px] tabular-nums text-muted-foreground">{downloads[model.id]?.progress}%</span>
+                            </Visible>
                             <ChevronRight
                                 className={`h-5 w-5 text-[#c7c7cc] transition-transform duration-200 dark:text-[#636366] ${expandedModel === model.id ? 'rotate-90' : ''}`}
                             />
@@ -77,7 +77,7 @@ export const LocalModelsSection = ({
                     </button>
 
                     <Visible visible={expandedModel === model.id}>
-<ExpandableContainer isExpanded={true}>
+                        <ExpandableContainer isExpanded={true}>
                             <div className="border-t border-black/[0.06] bg-black/[0.018] px-4 py-4 pl-14 dark:border-white/[0.06] dark:bg-white/[0.018]">
                                 <div className="space-y-3">
                                     <div className="flex items-start justify-between gap-5 text-[13px]">
@@ -94,7 +94,7 @@ export const LocalModelsSection = ({
                                 </div>
 
                                 <Visible visible={model.isCached}>
-<div className="mt-5 flex justify-end">
+                                    <div className="mt-5 flex justify-end">
                                         <Button
                                             variant="ghost"
                                             size="sm"
@@ -104,10 +104,10 @@ export const LocalModelsSection = ({
                                             <Trash2 className="mr-1.5 h-4 w-4" /> Delete Model
                                         </Button>
                                     </div>
-</Visible>
+                                </Visible>
 
                                 <Visible visible={!model.isCached}>
-<div className="mt-5 flex justify-end">
+                                    <div className="mt-5 flex justify-end">
                                         <Button
                                             size="sm"
                                             disabled={!model.isCompatible || downloads[model.id]?.status === 'downloading'}
@@ -119,10 +119,10 @@ export const LocalModelsSection = ({
                                             </Visible>
                                         </Button>
                                     </div>
-</Visible>
+                                </Visible>
                             </div>
                         </ExpandableContainer>
-</Visible>
+                    </Visible>
 
                     <Visible visible={index !== (models?.length ?? 0) - 1}>
                         <Divider inset />

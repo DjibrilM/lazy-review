@@ -1,5 +1,28 @@
 export const MAX_REPOSITORY_FETCH_RETRIES = 3;
 
+export interface IndexStateProject {
+  analysis?: unknown;
+  indexing_version?: number;
+  current_task?: string | null;
+}
+
+/**
+ * A project is review-ready once it has completed at least one indexing pass.
+ *
+ * `indexing_version` is only incremented by the indexer AFTER a full index has
+ * been built, so a value > 0 combined with a non-empty `analysis` manifest is
+ * the source of truth (a freshly-created project starts at 0).
+ */
+export function hasCompletedIndex(project?: IndexStateProject | null): boolean {
+  const analysis = project?.analysis;
+
+  const hasAnalysis =
+    analysis != null &&
+    (typeof analysis === 'string' ? analysis.length > 0 : Object.keys(analysis as object).length > 0);
+
+  return hasAnalysis && (project?.indexing_version ?? 0) > 0;
+}
+
 /**
  * Extracts an HTTP status from Axios-style errors and other
  * common API error shapes.

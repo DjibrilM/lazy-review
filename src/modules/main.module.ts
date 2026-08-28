@@ -9,6 +9,7 @@ import SocketModule from './socket-gateway/socket-gateway.module.js';
 import GithubModule from './github/github.module.js';
 import QvacModule from './qvac/qvac.module.js';
 import AiAgentModule from './ai-agent/ai-agent.module.js';
+import { loadAIModels } from './ai-agent/model-loader.js';
 
 export class MainModule {
   readonly server: Server;
@@ -41,9 +42,40 @@ export class MainModule {
       console.log(chalk.cyan('Socket Gateway initialized ✅'));
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Preload AI models into memory in the BACKGROUND so the first review,
+    // chat, or indexing run does not block on a cold 6GB+ model load.
+    // (qvac.config.json declares `preload: true` for both models; this is
+    // what actually honors it.)
+    //
+    // Non-blocking by design: the HTTP server is already accepting
+    // connections, and QVAC queues/coalesces concurrent loads, so a page
+    // opened during preload simply shows real progress and resolves when the
+    // weights are ready (or loads on-demand if preload fails).
+    // ─────────────────────────────────────────────────────────────────
+    this.preloadAiModels().catch((error) => {
+      console.warn(
+        chalk.yellow('AI model preload did not complete; models will load on demand.') + ` ${error?.message || error}`,
+      );
+    });
+
     console.log(
       chalk.green.bold(
         `\n✨ Boot-up complete! QVAC Server is running on port ${this.server.port}\n`,
+      ),
+    );
+  }
+
+  private async preloadAiModels(): Promise<void> {
+    console.log(chalk.cyan('Preloading AI models into memory in the background…'));
+
+    const startedAt = Date.now();
+
+    await loadAIModels(this, new Set<string>());
+
+    console.log(
+      chalk.green(
+        `✅ AI models preloaded into memory in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
       ),
     );
   }

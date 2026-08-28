@@ -81,10 +81,12 @@ class GithubRoutes {
           const owner = req.params.owner as string;
           const repo = req.params.repo as string;
           const pull_number = parseInt(req.params.pull_number as string, 10);
+          console.log(`[Backend] Fetching PR Diff for ${owner}/${repo}#${pull_number}...`);
           const diff = await this.githubServices.getPRDiff({ owner, repo, pull_number });
+          console.log(`[Backend] PR Diff fetch successful. Length: ${diff?.length}`);
           return res.type('text/plain').send(diff);
-        } catch (error) {
-          console.error('Error fetching PR diff:', error);
+        } catch (error: any) {
+          console.error(`[Backend] Error fetching PR diff:`, error, error.response?.data);
           return res.status(500).json({ error: 'Failed to fetch PR diff' });
         }
       },

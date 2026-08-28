@@ -34,6 +34,27 @@ interface StoredFact {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * GTE-Large has a 512-token embedding context window (`bert.context_length`
+ * in its GGUF metadata). The QVAC embed runtime hard-errors whenever an input
+ * tokenizes to more tokens than the model's effective context size.
+ *
+ * We bound embedding text by characters as a first, cheap approximation, but
+ * character counts do NOT guarantee token counts: ~1200 characters of dense
+ * code/JSON/minified content can tokenize to 565+ tokens, which is exactly
+ * why we previously saw:
+ *
+ *   tokenizeInput: context overflow: number of tokens in prompt 0 (565)
+ *     exceeds effective context size (512)
+ *
+ * `runEmbed` therefore additionally retries with a shrinking input whenever
+ * the QVAC runtime reports a context overflow, guaranteeing safe tokenization
+ * without shipping a local Gemma/GTE tokenizer just for indexing.
+ */
+const MAX_EMBED_INPUT_CHARS = 1000;
+
+const CONTEXT_OVERFLOW_RE = /context\s?overflow|tokenizeInput|effective context size/i;
+
 class IndexingCancelledError extends Error {
   constructor() {
     super('Indexing was cancelled by the user.');
@@ -219,14 +240,41 @@ export class CodeBaseIndexerAgent {
         const task = embeddingQueue.then(async () => {
           checkCancelled();
 
-          const response = await embed({
-            modelId: embeddingModelId,
-            text,
-          });
+          let attempt = text;
 
-          checkCancelled();
+          for (let attemptIndex = 0; ; attemptIndex++) {
+            try {
+              const response = await embed({
+                modelId: embeddingModelId,
+                text: attempt,
+              });
 
-          return getEmbeddingVector(response);
+              checkCancelled();
+
+              return getEmbeddingVector(response);
+            } catch (error: any) {
+              const message = String(error?.message || error || '');
+
+              const isContextOverflow = CONTEXT_OVERFLOW_RE.test(message);
+
+              if (!isContextOverflow || attemptIndex >= 5) {
+                throw error;
+              }
+
+              const shrunkLength = Math.max(64, Math.floor(attempt.length * 0.6));
+
+              if (shrunkLength >= attempt.length) {
+                throw error;
+              }
+
+              console.warn(
+                `[Embedding] GTE context overflow detected (${message}), ` +
+                  `shrinking input ${attempt.length} → ${shrunkLength} chars and retrying (attempt ${attemptIndex + 1})`,
+              );
+
+              attempt = attempt.substring(0, shrunkLength);
+            }
+          }
         });
 
         embeddingQueue = task.then(
@@ -263,7 +311,7 @@ export class CodeBaseIndexerAgent {
           checkCancelled();
 
           const rawText = fact.embeddingText || fact.content;
-          const textForEmbedding = rawText.substring(0, 1200);
+          const textForEmbedding = rawText.substring(0, MAX_EMBED_INPUT_CHARS);
 
           if (!textForEmbedding.trim()) {
             continue;
@@ -461,7 +509,7 @@ export class CodeBaseIndexerAgent {
            * input so huge functions/classes do not overwhelm the
            * embedding model.
            */
-          const embeddingText = symbolContent.substring(0, 1200);
+          const embeddingText = symbolContent.substring(0, MAX_EMBED_INPUT_CHARS);
 
           facts.push({
             content: symbolContent,

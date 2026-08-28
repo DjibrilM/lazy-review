@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "description": "",
   "bin": {
-    "lazy-review": "./dist/bin.js"
+    "lazy-review": "./dist/bin.js",
+    "lrv": "./dist/bin.js"
   },
   "main": "dist/bin.js",
   "scripts": {

@@ -5,10 +5,11 @@ import {
     useRef,
     useState,
 } from 'react';
-import { useParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Bot, Loader2 } from 'lucide-react';
 import Visible from '@/components/common/Visible';
 import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
 
 import {
     ResizableHandle,
@@ -26,6 +27,7 @@ import { FilesChangedTab } from '../components/FilesChangedTab';
 import { PRReviewHeader } from '../components/PRReviewHeader';
 import { AIChatSidebar } from '../components/AIChatSidebar';
 import { useChat } from '../hooks/useChat';
+import { hasCompletedIndex } from '../../repos/utils/repo-utils';
 
 type TabType = 'pr_summary' | 'ai_review' | 'files';
 type ReviewStatus = 'idle' | 'running' | 'success' | 'error';
@@ -33,11 +35,15 @@ type ReviewStatus = 'idle' | 'running' | 'success' | 'error';
 export function PRReview() {
     const { id, prId } = useParams();
 
+    const navigate = useNavigate();
+
     const [activeTab, setActiveTab] = useState<TabType>('pr_summary');
     const [isModelLoading, setIsModelLoading] = useState(true);
     const [modelLoadingMessage, setModelLoadingMessage] = useState(
         'Loading the models used for review and chat.',
     );
+    const [sessionInitError, setSessionInitError] = useState<string | null>(null);
+    const [modelLoadingSeconds, setModelLoadingSeconds] = useState(0);
     const [review, setReview] = useState<any>(null);
     const [reviewStatus, setReviewStatus] = useState<ReviewStatus>('idle');
     const [reviewMessage, setReviewMessage] = useState('');
@@ -45,7 +51,7 @@ export function PRReview() {
 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    const { data: repo, isLoading: isLoadingRepo } = useQuery({
+    const { data: repo, isLoading: isLoadingRepo, refetch: refetchRepo } = useQuery({
         queryKey: ['local-project', id],
         queryFn: () => projectService.getProject(id as string),
         enabled: !!id,
@@ -54,6 +60,13 @@ export function PRReview() {
     const owner = repo?.repository_url?.split('/')[3] || '';
     const repoName = repo?.name || '';
     const pullNumber = Number(prId);
+
+    // Dynamic review access gate: the review experience is only reachable after
+    // the repository has completed at least one indexing pass. The repo query is
+    // invalidated by IndexingGlobalListener when indexing finishes, so `isIndexed`
+    // flips true and this page unlocks automatically (no reload needed).
+    const isIndexed = hasCompletedIndex(repo);
+    const isIndexing = repo?.current_task === 'indexing';
 
     const { data: prs = [], isLoading: isLoadingPrs } = useQuery({
         queryKey: ['pull-requests', owner, repoName],
@@ -72,41 +85,89 @@ export function PRReview() {
         enabled: !!owner && !!repoName && !!pullNumber,
     });
 
-    const { data: prDiff = '', isLoading: isLoadingDiff } = useQuery({
+    const { data: prDiff = '', isFetching: isFetchingDiff, isError: isDiffError, refetch: refetchDiff } = useQuery({
         queryKey: ['pr-diff', owner, repoName, pullNumber],
         queryFn: () => githubService.getPRDiff(owner, repoName, pullNumber),
         enabled: !!owner && !!repoName && !!pullNumber,
+        retry: false,
     });
 
-    useEffect(() => {
-        if (!id || !pullNumber || !prDiff) return;
-
+    const initSession = useCallback(async (currentPrDiff: string) => {
         let mounted = true;
+
+        const SESSION_START_TIMEOUT_MS = 2 * 60 * 1000;
+        setSessionInitError(null);
         setIsModelLoading(true);
         setModelLoadingMessage('Loading AI models…');
 
-        projectService
-            .startPRSession(id, pullNumber, prDiff)
-            .then(() => {
-                if (mounted) setIsModelLoading(false);
-            })
-            .catch((error) => {
-                console.error('Failed to start PR review session:', error);
-                if (mounted) {
-                    setModelLoadingMessage(
-                        (error as Error).message || 'Failed to initialize local AI session.',
-                    );
-                    setIsModelLoading(false);
-                }
-            });
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+        const beginTimer = () => {
+            timeoutId = setTimeout(() => {
+                if (!mounted) return;
+                setIsModelLoading(false);
+                setSessionInitError('Starting the AI session timed out. Please try again.');
+            }, SESSION_START_TIMEOUT_MS);
+        };
+        beginTimer();
+
+        try {
+            await projectService.startPRSession(id as string, pullNumber, currentPrDiff);
+            if (!mounted) return;
+            clearTimeout(timeoutId);
+            setIsModelLoading(false);
+        } catch (error: unknown) {
+            console.error('Failed to start PR review session:', error);
+            if (!mounted) return;
+            clearTimeout(timeoutId);
+
+            const details = (error as { details?: { code?: string } })?.details;
+            if (details?.code === 'INDEX_REQUIRED') {
+                setIsModelLoading(false);
+                void refetchRepo();
+                return;
+            }
+
+            setIsModelLoading(false);
+            setSessionInitError(
+                (error as Error | undefined)?.message || 'Failed to initialize the local AI session.',
+            );
+        }
 
         return () => {
             mounted = false;
-            projectService.stopPRSession(id, pullNumber).catch((error) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            projectService.stopPRSession(id as string, pullNumber).catch((error) => {
                 console.error('Failed to stop PR review session:', error);
             });
         };
-    }, [id, pullNumber, prDiff]);
+    }, [id, pullNumber, refetchRepo]);
+
+    useEffect(() => {
+        if (!id || !pullNumber || !isIndexed) return;
+
+        if (isFetchingDiff && !prDiff) {
+            setSessionInitError(null);
+            setIsModelLoading(true);
+            setModelLoadingMessage('Fetching the pull request diff…');
+            return;
+        }
+
+        if (!prDiff) {
+            setIsModelLoading(false);
+            setSessionInitError(
+                isDiffError
+                    ? 'Could not fetch the PR diff from GitHub. It may exceed GitHub\u2019s size limit for a single diff request.'
+                    : 'This pull request has no loadable diff. Please select a different pull request.',
+            );
+            return;
+        }
+
+        const cleanup = initSession(prDiff);
+        return () => {
+            cleanup.then(fn => fn?.());
+        };
+    }, [id, pullNumber, prDiff, isIndexed, isFetchingDiff, isDiffError, initSession]);
 
     useSocketEffect({
         onModelProgress: useCallback(
@@ -120,6 +181,17 @@ export function PRReview() {
             [id, pullNumber],
         ),
     });
+
+    // Ticker so the "loading models into memory" overlay visibly progresses
+    // (first cold load of the 6GB+ LLM can take a while).
+    useEffect(() => {
+        if (!isModelLoading) {
+            setModelLoadingSeconds(0);
+            return;
+        }
+        const interval = setInterval(() => setModelLoadingSeconds((s) => s + 1), 1000);
+        return () => clearInterval(interval);
+    }, [isModelLoading]);
 
     const {
         messages,
@@ -223,7 +295,39 @@ export function PRReview() {
         setActiveTab('files');
     }, []);
 
+    const handleRetrySessionInit = useCallback(async () => {
+        setSessionInitError(null);
+        setIsModelLoading(true);
+        setModelLoadingMessage('Retrying…');
+        const result = await refetchDiff();
+        
+        if (result.isError) {
+            setIsModelLoading(false);
+            setSessionInitError('Could not fetch the PR diff from GitHub. It may exceed GitHub’s size limit for a single diff request.');
+            return;
+        }
+        
+        if (!result.data) {
+            setIsModelLoading(false);
+            setSessionInitError('This pull request has no loadable diff. Please select a different pull request.');
+            return;
+        }
+        
+        initSession(result.data);
+    }, [refetchDiff, initSession]);
+
     const handleInitializeReview = async () => {
+        // Dynamic gate mirrors the backend: no completed index → no review.
+        if (!hasCompletedIndex(repo)) {
+            setReviewStatus('error');
+            setReviewMessage(
+                isIndexing
+                    ? 'AI review is unavailable while indexing is still running. Please wait for it to finish.'
+                    : 'AI review requires at least one completed index for this repository.',
+            );
+            return;
+        }
+
         if (!prDiff || !pr || !id) {
             setReviewStatus('error');
             setReviewMessage('Pull request data is not ready yet.');
@@ -253,7 +357,7 @@ export function PRReview() {
     }, [messages]);
 
     useEffect(() => {
-        if (!pr || !repo || messages.length > 0 || isLoadingCommits || isLoadingDiff) return;
+        if (!pr || !repo || messages.length > 0 || isLoadingCommits || isFetchingDiff) return;
 
         const fileCount = pr.changed_files ?? changedFiles.length;
 
@@ -268,7 +372,7 @@ export function PRReview() {
         commits.length,
         changedFiles.length,
         isLoadingCommits,
-        isLoadingDiff,
+        isFetchingDiff,
     ]);
 
     if (isLoadingRepo || isLoadingPrs) {
@@ -292,6 +396,47 @@ export function PRReview() {
         );
     }
 
+    // ─ Index access gate ──────────────────────────────────────────────
+    // The review experience is only reachable once the repository has at
+    // least one completed index. This page unlocks automatically when
+    // indexing finishes (the repo query is invalidated via socket events).
+    if (!isIndexed) {
+        return (
+            <div className="flex h-[calc(100vh-64px)] items-center justify-center bg-background px-4">
+                <div className="w-full max-w-md rounded-md border border-border bg-card px-5 py-7 text-center shadow-sm">
+                    {isIndexing ? (
+                        <>
+                            <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                            <h2 className="mt-3 text-sm font-semibold text-foreground">
+                                Indexing in progress
+                            </h2>
+                            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                                AI reviews are locked until this repository has been indexed at
+                                least once. Indexing is still running — this page unlocks
+                                automatically as soon as it completes, no refresh needed.
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <Bot className="mx-auto h-6 w-6 text-muted-foreground" />
+                            <h2 className="mt-3 text-sm font-semibold text-foreground">
+                                This repository is not indexed yet
+                            </h2>
+                            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                                AI reviews require at least one completed index. Go back to the
+                                repository, start indexing, and this review experience unlocks
+                                automatically once it finishes.
+                            </p>
+                            <Button onClick={() => navigate(`/repo/${id}`)} className="mt-5">
+                                Back to repository
+                            </Button>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     const issueCount = review?.issues?.length ?? 0;
 
     return (
@@ -306,6 +451,40 @@ export function PRReview() {
                 setActiveTab={setActiveTab}
             />
 
+            <Visible visible={!!sessionInitError}>
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/75 backdrop-blur-[1px]">
+                    <div className="flex w-full max-w-md flex-col gap-3 rounded-md border border-destructive/30 bg-card px-5 py-5 shadow-lg">
+                        <div className="flex items-start gap-3">
+                            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                            <div>
+                                <p className="text-xs font-medium text-foreground">
+                                    Couldn’t start the AI session
+                                </p>
+                                <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                                    {sessionInitError}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Button
+                                size="sm"
+                                onClick={handleRetrySessionInit}
+                            >
+                                Retry
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/repo/${id}`)}
+                            >
+                                Back to repository
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Visible>
+
             <Visible visible={isModelLoading}>
 <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/75 backdrop-blur-[1px]">
                     <div className="flex min-w-[280px] items-center gap-3 rounded-md border border-border bg-card px-4 py-3 shadow-lg">
@@ -316,7 +495,7 @@ export function PRReview() {
                                 Starting local AI
                             </p>
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                {modelLoadingMessage}
+                                {modelLoadingMessage} {modelLoadingSeconds > 0 ? `· ${modelLoadingSeconds}s` : ''}
                             </p>
                         </div>
                     </div>
@@ -369,7 +548,7 @@ export function PRReview() {
                     <Visibility visible={activeTab === 'files'}>
                         <FilesChangedTab
                             diff={prDiff}
-                            isLoading={isLoadingDiff}
+                            isLoading={isFetchingDiff}
                             selectedFileForDiff={selectedFileForDiff}
                             onDiffScrolled={() => setSelectedFileForDiff(null)}
                         />
