@@ -6,7 +6,7 @@ This directory implements a **Multi-Agent, Evidence-Driven Code Review Pipeline*
 
 ## The Multi-Agent Architecture
 
-The pipeline consists of one LLM dispatcher and three distinct ReAct (Reasoning + Acting) agents.
+The pipeline consists of one LLM dispatcher and four distinct ReAct (Reasoning + Acting) agents.
 
 ### 1. The Change Analyzer (Dispatcher)
 
@@ -27,6 +27,11 @@ The pipeline consists of one LLM dispatcher and three distinct ReAct (Reasoning 
 
 - **File:** [`finding-verifier.ts`](file:///Users/jib/projects/lazy-review/src/modules/ai-agent/review-pipeline/finding-verifier.ts)
 - **Role:** A critical quality-control agent. It acts as a "Red Team" against the Specialist Reviewers. Before a finding is reported, the Verifier actively attempts to disprove it by searching for cleanup mechanisms, timeouts, or lifecycle handlers that mitigate the issue.
+
+### 5. The Secret Scanner (Leak Hunter Agent)
+
+- **File:** [`secret-scanner.ts`](file:///Users/jib/projects/lazy-review/src/modules/ai-agent/review-pipeline/secret-scanner.ts)
+- **Role:** In charge of searching for sensitive files and leaks that are not supposed to reach GitHub. It scans the PR diff **file names** for sensitive candidates (`.env` files, private keys, credential bundles, etc.). Whenever a file name may contain secrets, it calls the **`read_pr_file_diff`** tool to read that file's diff content and **confirms** the presence of actual secrets (keys, tokens, passwords) before reporting a finding as a `security` candidate.
 
 ---
 

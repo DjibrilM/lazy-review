@@ -21,7 +21,7 @@ export function SettingsSection({
             aria-labelledby={title ? titleId : undefined}
         >
             <Visible visible={title}>
-<h2
+                <h2
                     id={titleId}
                     className="
                       mb-1.5 px-4
@@ -33,7 +33,7 @@ export function SettingsSection({
                 >
                     {title}
                 </h2>
-</Visible>
+            </Visible>
 
             <div
                 className="
@@ -48,7 +48,7 @@ export function SettingsSection({
             </div>
 
             <Visible visible={footer}>
-<div
+                <div
                     className="
                       mt-1.5 px-4
                       text-[12px] leading-[17px]
@@ -58,7 +58,7 @@ export function SettingsSection({
                 >
                     {footer}
                 </div>
-</Visible>
+            </Visible>
         </section>
     );
 }
@@ -144,7 +144,7 @@ export function SectionError({
             </p>
 
             <Visible visible={onRetry}>
-<button
+                <button
                     type="button"
                     onClick={onRetry}
                     className="
@@ -163,7 +163,7 @@ export function SectionError({
                     <RotateCw className="h-3.5 w-3.5" />
                     Retry
                 </button>
-</Visible>
+            </Visible>
         </div>
     );
 }

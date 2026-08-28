@@ -80,7 +80,12 @@ export const projectService = {
       });
       return res.data;
     } catch (error: any) {
-      throw new Error(error.response?.data?.error || 'Failed to start PR review session');
+      // Preserve the structured payload (e.g. { code: 'INDEX_REQUIRED', isIndexing, isIndexed })
+      // so callers can react dynamically to missing/incomplete indexes.
+      const data = error.response?.data;
+      const err = new Error(data?.error || 'Failed to start PR review session') as any;
+      err.details = data || {};
+      throw err;
     }
   },
 
@@ -118,7 +123,12 @@ export const projectService = {
       const res = await http.post(`/projects/${id}/review`, payload);
       return res.data.data;
     } catch (error: any) {
-      throw new Error(error.response?.data?.error || 'Failed to generate review');
+      // Preserve the structured payload (e.g. { code: 'INDEX_REQUIRED', isIndexing, isIndexed })
+      // so callers can react dynamically to missing/incomplete indexes.
+      const data = error.response?.data;
+      const err = new Error(data?.error || 'Failed to generate review') as any;
+      err.details = data || {};
+      throw err;
     }
   },
 

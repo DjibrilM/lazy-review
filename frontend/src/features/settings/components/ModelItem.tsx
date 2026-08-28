@@ -208,7 +208,7 @@ export const ModelItem = ({
                                 <Visible visible={isDownloading} fallback={(
                                     <Download className="h-3.5 w-3.5" />
                                 )}>
-                                    (
+
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 </Visible>
 
@@ -217,7 +217,7 @@ export const ModelItem = ({
                                 </Visible>
                             </Button>
                         )}>
-                            (
+
                             <Button
                                 type="button"
                                 variant="ghost"

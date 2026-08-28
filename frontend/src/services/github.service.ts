@@ -70,11 +70,15 @@ export const githubService = {
 
   async getPRDiff(owner: string, repo: string, pullNumber: number): Promise<string> {
     try {
+      console.log(`[Frontend] Fetching PR Diff for ${owner}/${repo}#${pullNumber}...`);
       const res = await http.get(`/github/repos/${owner}/${repo}/pulls/${pullNumber}/diff`, {
         responseType: 'text',
+        timeout: 60000,
       });
+      console.log(`[Frontend] PR Diff fetch successful. Response type: ${typeof res.data}, Length: ${res.data?.length}`);
       return res.data as string;
-    } catch (error) {
+    } catch (error: any) {
+      console.error(`[Frontend] PR Diff fetch failed!`, error, error.response?.data);
       throw new Error('Failed to fetch PR diff');
     }
   },

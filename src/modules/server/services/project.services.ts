@@ -1,12 +1,57 @@
 import { MainModule } from '../../main.module.js';
 import { type Request, type Response } from 'express';
 import ProjectEntity from '../entities/project.entity.js';
+
+/**
+ * A project is review-ready once it has completed at least one indexing pass.
+ *
+ * `indexing_version` is only incremented by the indexer AFTER a full index has
+ * been built, so a value > 0 combined with a non-empty `analysis` manifest is
+ * the source of truth (a freshly-created project starts at 0).
+ */
+export function hasCompletedIndex(project: Pick<ProjectEntity, 'analysis' | 'indexing_version'>): boolean {
+  return Boolean(project?.analysis) && (project.indexing_version || 0) > 0;
+}
+
 export class ProjectServices {
   mainModule: MainModule;
   readonly projectEntity = ProjectEntity;
 
   constructor(mainModule: MainModule) {
     this.mainModule = mainModule;
+  }
+
+  /**
+   * Guards the review endpoints. Returns `null` when the project can be
+   * reviewed, or a structured 409 response explaining why it cannot:
+   *
+   *   - code INDEX_REQUIRED + isIndexing=true  → wait for the running index
+   *   - code INDEX_REQUIRED + isIndexing=false → no index exists yet; create one
+   *
+   * The structured body lets the frontend react dynamically (unlock the review
+   * buttons as soon as the index completes) instead of just surfacing a string.
+   */
+  private resolveReviewAccess(
+    project: ProjectEntity,
+  ): { status: number; body: Record<string, unknown> } | null {
+    if (hasCompletedIndex(project)) {
+      return null;
+    }
+
+    const isIndexing = project.current_task === 'indexing';
+
+    return {
+      status: 409,
+      body: {
+        error: isIndexing
+          ? 'This repository is still being indexed. Please wait for indexing to finish before accessing the review.'
+          : 'This repository has not been indexed yet. Please run an initial index before accessing the review.',
+        code: 'INDEX_REQUIRED',
+        isIndexing,
+        isIndexed: false,
+        indexingVersion: project.indexing_version || 0,
+      },
+    };
   }
 
   async createProject(req: Request, res: Response) {
@@ -172,12 +217,12 @@ export class ProjectServices {
         return res.status(404).json({ message: 'Project not found' });
       }
 
-      // Require the project to have been indexed before starting a review session.
-      if (!project.analysis || !project.indexing_version) {
-        return res.status(400).json({
-          error:
-            'This repository has not been indexed yet. Please wait for indexing to complete before starting a review.',
-        });
+      // Require the project to have been indexed at least once before starting
+      // a review session. Fails with a structured 409 when the index is missing
+      // or still building so the UI can react dynamically.
+      const access = this.resolveReviewAccess(project);
+      if (access) {
+        return res.status(access.status).json(access.body);
       }
 
       await this.mainModule.aiAgent.sessionManager.startSession(
@@ -210,7 +255,8 @@ export class ProjectServices {
       const stopped = this.mainModule.aiAgent.sessionManager.stopSession(projectId, pullNumber);
 
       if (stopped) {
-        await this.mainModule.aiAgent.prReviewAgent.unloadModels();
+        // Models are intentionally kept loaded in memory after a session ends to
+        // avoid a massive delay when opening the next PR review screen.
       }
 
       return res.json({
@@ -271,12 +317,11 @@ export class ProjectServices {
       const project = await ProjectEntity.findOne({ where: { id: projectId } });
       if (!project) return res.status(404).json({ message: 'Project not found' });
 
-      // Require the project to have been indexed before generating a review.
-      if (!project.analysis || !project.indexing_version) {
-        return res.status(400).json({
-          error:
-            'This repository has not been indexed yet. Please wait for indexing to complete before generating a review.',
-        });
+      // Same dynamic index gate as startPRSession: no completed index → 409
+      // with a structured body telling the UI whether to wait or to index first.
+      const access = this.resolveReviewAccess(project);
+      if (access) {
+        return res.status(access.status).json(access.body);
       }
 
       // Initialize state to running
