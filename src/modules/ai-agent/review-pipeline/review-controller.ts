@@ -1,6 +1,7 @@
 import { RepositoryExplorer } from './repository-explorer.js';
 import { analyzeChange } from './change-analyzer.js';
 import { reviewAsSpecialist } from './specialist-reviewer.js';
+import { scanSensitiveFiles } from './secret-scanner.js';
 import { verifyFinding } from './finding-verifier.js';
 import { toRankedFinding, dedupeFindings } from './finding-ranker.js';
 import { writeReview } from './review-writer.js';
@@ -70,6 +71,22 @@ export class ReviewController {
       } catch (e: any) {
         console.warn(`[ReviewController] ${cat} failed:`, e?.message);
       }
+    }
+
+    // Secret Scanner: detect sensitive files / leaked secrets not meant for GitHub.
+    p('Scanning for sensitive files and leaked secrets...');
+    try {
+      const secretFindings = await scanSensitiveFiles(
+        {
+          modelId: this.opts.llmId,
+          kvCacheId: this.opts.projectId,
+          progress: p,
+        },
+        this.opts.diffText,
+      );
+      candidates.push(...secretFindings);
+    } catch (e: any) {
+      console.warn('[ReviewController] secret scan failed:', e?.message);
     }
 
     // 3. Adversarial verification.

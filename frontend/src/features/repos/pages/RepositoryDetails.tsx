@@ -24,7 +24,7 @@ import { AIReviewSessionDialog } from '../components/AIReviewSessionDialog';
 import { RepositoryHeader } from '../components/RepositoryHeader';
 import { IndexingProgress, IndexingError, RepositoryRefetchError } from '../components/IndexingStatus';
 import { RepositoryLoadError } from '../components/RepositoryLoadError';
-import { getErrorStatus, MAX_REPOSITORY_FETCH_RETRIES } from '../utils/repo-utils';
+import { getErrorStatus, MAX_REPOSITORY_FETCH_RETRIES, hasCompletedIndex } from '../utils/repo-utils';
 import Visible from "@/components/common/Visible";
 
 interface PullRequestLike {
@@ -99,6 +99,17 @@ export function RepositoryDetails() {
     startFresh?: boolean,
   ) => {
     if (!repo) {
+      return;
+    }
+
+    // Dynamic guard: reviews are only accessible after at least one completed
+    // index. This mirrors the backend gate so navigation is blocked up front.
+    if (!hasCompletedIndex(repo)) {
+      toast.error(
+        repo?.current_task === 'indexing'
+          ? 'Indexing is still in progress. Please wait for it to finish before starting a review.'
+          : 'This repository must be indexed at least once before it can be reviewed.',
+      );
       return;
     }
 
@@ -318,7 +329,11 @@ export function RepositoryDetails() {
           handleSelectPR
         }
         isCurrentlyIndexing={isCurrentlyIndexing}
-        isIndexed={Boolean(repo?.analysis && Object.keys(repo.analysis).length > 0)}
+        isIndexed={hasCompletedIndex(repo)}
+        indexingThinking={indexingThinking}
+        indexingDuration={indexingDuration}
+        indexingError={indexingError}
+        onStartIndexing={handleReindex}
       />
     </div>
   );

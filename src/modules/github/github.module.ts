@@ -19,14 +19,10 @@ class GithubModule {
 
   constructor(mainModule?: MainModule) {
     if (mainModule) this.mainModule = mainModule;
-    this.currentToken = process.env.GITHUB_TOKEN || '';
-    this.octokit = new Octokit({
-      auth: this.currentToken,
-    });
+    this.currentToken = '';
+    this.octokit = new Octokit();
 
-    this.git = simpleGit({
-      config: [`http.extraHeader=Authorization: Bearer ${this.currentToken}`],
-    });
+    this.git = simpleGit();
   }
 
   updateToken(token: string) {
