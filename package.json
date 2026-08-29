@@ -25,7 +25,8 @@
     "link-watch": "nodemon --watch dist --ext js --exec \"pnpm link --global\"",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release": "pnpm run prod:build && pnpm publish --access public"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
