@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./logo.png" width="200" alt="Lazy Review Logo">
+  <img src="https://github.com/DjibrilM/lazy-review/raw/develop/frontend/public/resources/images/logo.png" width="200" alt="Lazy Review Logo">
 </p>
 
 # Lazy Review — PR Review Assistant
@@ -11,6 +11,7 @@ A CLI tool that reviews GitHub pull requests using local AI models. Point it at 
 Lazy Review fetches PR diffs from GitHub and runs them through a multi-agent pipeline on your machine. The output is a structured GitHub PR review comment with categorized findings (`approve` / `request_changes` / `comment`), severity scores, and file-level annotations.
 
 It uses two models:
+
 - A coding LLM (~5 GB RAM) for review generation
 - An embedding model (~2 GB RAM) for semantic codebase search
 
@@ -31,6 +32,7 @@ Confirmed findings are deduplicated by a hash of their text and location, ranked
 ## Codebase indexing
 
 When you add a repository, Lazy Review scans the source tree and builds a local vector index. It:
+
 - Parses symbols from TypeScript, JavaScript, Python, Rust, and Go files using Tree-sitter
 - Chunks content at safe token boundaries (the embedding model has a 512-token context window)
 - Stores embeddings in SQLite using the `sqlite-vec` extension
@@ -40,6 +42,7 @@ The index is used during reviews to provide semantic context to the agents.
 ## Tool-call parsing
 
 Local models don't always return well-structured tool calls. The agent loop handles two fallback cases:
+
 - A regex parser for non-standard formats (e.g. the `<|tool_call|>` dialect used by some quantized models)
 - Tool results from fallback-parsed calls are injected as `user` messages to avoid strict API validation errors
 
@@ -59,10 +62,12 @@ Local models don't always return well-structured tool calls. The agent loop hand
 
 Tested on a Mac Mini (Apple Silicon). You need ~7 GB of free RAM to hold both models simultaneously:
 
-| Model           | RAM    |
-| --------------- | ------ |
-| Coding LLM      | ~5 GB  |
-| Embedding Model | ~2 GB  |
+| Model           | RAM   |
+| --------------- | ----- |
+| Coding LLM      | ~5 GB |
+| Embedding Model | ~2 GB |
+
+Since the models alone take up around 7 GB and other computer operations also need space, a good environment should have around 12 GB to 16 GB of total RAM.
 
 GPU inference can be toggled in Settings. If the app crashes during model initialization (common on older GPUs), switch to CPU inference.
 
@@ -96,7 +101,7 @@ The CLI is available as either `lazy-review` or the `lrv` shorthand.
 
 ### `run`
 
-Starts the Lazy Review server. 
+Starts the Lazy Review server.
 
 ```bash
 lrv run
@@ -112,4 +117,3 @@ lrv run
 ## License
 
 MIT
-
