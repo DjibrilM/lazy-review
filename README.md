@@ -1,95 +1,119 @@
 <p align="center">
-  <img src="frontend/public/resources/images/logo.png" width="200" alt="Lazy Review Logo">
+  <img src="https://github.com/DjibrilM/lazy-review/raw/develop/frontend/public/resources/images/logo.png" width="200" alt="Lazy Review Logo">
 </p>
 
-# Lazy Review
+# Lazy Review — PR Review Assistant
 
-Lazy Review is an offline-first AI code reviewer. It provides a full-stack environment (CLI and Web UI) for downloading repositories, generating automated AI code reviews, and searching through your codebase using local AI models.
+A CLI tool that reviews GitHub pull requests using local AI models. Point it at a repository, select a PR, and it posts a structured review comment back to GitHub — no cloud inference, no API keys beyond GitHub OAuth.
 
-## 🚀 Features
+## Overview
 
-- **Local & Offline AI Reviews:** Built-in integration with the QVAC SDK for fully offline AI code reviews, ensuring complete privacy.
-- **Automated PR Review Pipeline:** A multi-agent ReAct (Reasoning + Acting) pipeline that autonomously analyzes Pull Requests, gathers evidence across your codebase, and adversarialy verifies findings before reporting.
-- **Resilient Local LLM Execution:** Features a robust JSON fallback parser that seamlessly intercepts raw text tool calls from local models and dynamically injects results, completely bypassing strict API structural validations.
-- **Repository Management:** Easily connect to GitHub, download repositories, and manage your local codebases via an intuitive React UI.
-- **Semantic Code Search:** Leverages local vector embeddings to allow you to semantically search your codebase. Optimized text bounds guarantee safe tokenization even for models with small (e.g. 512) context windows.
-- **100% Offline AI Support:** Built exclusively on top of the QVAC SDK, ensuring your code never leaves your local machine.
+Lazy Review fetches PR diffs from GitHub and runs them through a multi-agent pipeline on your machine. The output is a structured GitHub PR review comment with categorized findings (`approve` / `request_changes` / `comment`), severity scores, and file-level annotations.
 
-## 🛠️ Tech Stack & Architecture
+It uses two models:
 
-Lazy Review uses a full-stack architecture designed for local AI inference:
+- A coding LLM (~5 GB RAM) for review generation
+- An embedding model (~2 GB RAM) for semantic codebase search
 
-### Backend
+Both are downloaded and managed via the [QVAC SDK](https://www.npmjs.com/package/@qvac/sdk).
 
-- **Node.js & Express.js:** The core server providing REST APIs for GitHub integration, AI providers, and project management.
-- **QVAC Server Integration (`@qvac/sdk`):** Provides the ability to download, manage, and run local open-weight AI models (e.g., Qwen, GTE) directly on your machine. This ensures code privacy and allows the reviewer to function completely offline.
-- **LangChain:** Framework for orchestrating the AI sub-agents, seamlessly integrated with the QVAC SDK.
-- **WebSockets (`socket.io`):** Facilitates real-time, bi-directional communication to stream project creation logs and live agent terminal outputs to the frontend.
+## Review pipeline
 
-### Database & Storage
+A review goes through five sequential stages:
 
-- **SQLite (`better-sqlite3` & `typeorm`):** A lightweight, fast relational database used to store project configurations, GitHub repository metadata, and AI provider settings locally.
-- **Vector Database (`sqlite-vec`):** We leverage the `sqlite-vec` extension to use SQLite as a local vector database. This is used in tandem with local embedding models (like GTE_LARGE) to store code embeddings, enabling fast, semantic similarity searches across your codebase without relying on external cloud vector stores.
+1. **Change Analyzer** — classifies the PR diff and selects which specialist reviewers are needed (e.g. `security`, `performance`, `concurrency`, `correctness`, `architecture`, `maintainability`)
+2. **Specialist Reviewers** — each runs a ReAct loop, forming hypotheses and querying the Repository Explorer for evidence rather than reading files directly
+3. **Repository Explorer** — a sub-agent with deterministic tools (`read_file`, `search_symbol`, `semantic_search`) that answers evidence queries from the Specialist Reviewers
+4. **Finding Verifier** — receives each candidate finding and attempts to disprove it by searching for cleanup handlers, timeouts, or lifecycle methods that would make the issue a false positive
+5. **Secret Scanner** — independently scans diff file names for sensitive candidates (`.env`, private keys, credential bundles), reads the actual diff content to confirm before reporting
 
-### Frontend
+Confirmed findings are deduplicated by a hash of their text and location, ranked by `Impact × Likelihood`, and included in the final review verdict (`approve` / `request_changes` / `comment`).
 
-- **React & Vite:** A web UI scaffolding.
-- **Component Architecture:** A highly modular, responsive design (featuring Dark/Light modes) with tailored components for the Dashboard, Deployment Terminal, AI Provider settings, and Repo Selection.
+## Codebase indexing
 
-## ⚠️ Performance & Hardware Limitations
+When you add a repository, Lazy Review scans the source tree and builds a local vector index. It:
 
-### Testing Environment
+- Parses symbols from TypeScript, JavaScript, Python, Rust, and Go files using Tree-sitter
+- Chunks content at safe token boundaries (the embedding model has a 512-token context window)
+- Stores embeddings in SQLite using the `sqlite-vec` extension
 
-This application was actively developed and tested on a **Mac Mini** (Apple Silicon).
+The index is used during reviews to provide semantic context to the agents.
 
-### GPU vs CPU Inference
+## Tool-call parsing
 
-By default, **GPU inference is enabled** for all AI model execution to ensure the highest possible performance and speed. However, we provide a built-in feature to toggle between GPU and CPU inference via the application settings.
+Local models don't always return well-structured tool calls. The agent loop handles two fallback cases:
 
-### Limitations for Lower-End Devices
+- A regex parser for non-standard formats (e.g. the `<|tool_call|>` dialect used by some quantized models)
+- Tool results from fallback-parsed calls are injected as `user` messages to avoid strict API validation errors
 
-Running an autonomous, multi-agent AI pipeline locally is a highly resource-intensive task:
+## Tech stack
 
-- Lower-end devices or machines lacking a dedicated GPU/Apple Silicon may struggle to execute the review pipeline smoothly.
-- **Context Size Constraints**: While we have optimized token chunking for semantic embeddings to fit safely within a 512-token context window, processing large pull requests still requires substantial RAM and compute overhead.
-- You may experience significantly longer wait times or out-of-memory (OOM) crashes if your device has limited memory.
+| Layer       | Tech                                          |
+| ----------- | --------------------------------------------- |
+| Backend     | Node.js, Express 5, TypeScript                |
+| AI          | QVAC SDK, LangChain                           |
+| Database    | SQLite (TypeORM + better-sqlite3), sqlite-vec |
+| AST Parsing | Tree-sitter (TS, JS, Python, Rust, Go)        |
+| Real-time   | socket.io                                     |
+| Frontend    | React, Vite, TanStack Query                   |
+| CLI         | Commander.js                                  |
 
-### Known GPU Issues (The "Old GPU Problem")
+## Hardware requirements
 
-Older GPUs or unsupported drivers may experience failures when attempting to load large quantized language models or embedding models into VRAM. If the application crashes during model initialization, please switch to **CPU Inference** in the settings. This bypasses the GPU entirely at the cost of slower inference speeds.
+Tested on a Mac Mini (Apple Silicon). You need ~7 GB of free RAM to hold both models simultaneously:
 
-## 📦 Getting Started
+| Model           | RAM   |
+| --------------- | ----- |
+| Coding LLM      | ~5 GB |
+| Embedding Model | ~2 GB |
 
-### Prerequisites
+Since the models alone take up around 7 GB and other computer operations also need space, a good environment should have around 12 GB to 16 GB of total RAM.
 
-- Node.js (v18+)
-- pnpm package manager
+GPU inference can be toggled in Settings. If the app crashes during model initialization (common on older GPUs), switch to CPU inference.
 
-### Installation
+## Installation
 
-1. Clone the repository:
+### From npm
 
-   ```bash
-   git clone <your-repo-url>
-   cd lazy-review
-   ```
+```bash
+npm install -g @djibrilm/lazy-review
+lrv run
+```
 
-2. Install dependencies for both the backend and frontend:
+Starts the server on `http://localhost:16500`.
 
-   ```bash
-   pnpm install
-   ```
+### From source
 
-3. Run the development environment:
+Requires Node.js 18+ and pnpm.
 
-   ```bash
-   pnpm run dev
-   ```
+```bash
+git clone https://github.com/djibrilm/lazy-review
+cd lazy-review
+pnpm install
+pnpm run dev
+```
 
-   This will start both the Express backend server (default port `16500`) and the Vite frontend concurrently.
+This starts both the Express server (port `16500`) and the Vite dev server concurrently.
 
-4. Open your browser and navigate to the frontend URL (typically `http://localhost:5173`) to start using Lazy Review!
+## CLI Commands
 
-## 📜 License
+The CLI is available as either `lazy-review` or the `lrv` shorthand.
 
-MIT License
+### `run`
+
+Starts the Lazy Review server.
+
+```bash
+lrv run
+```
+
+## Setup
+
+1. Open Settings → Local AI Models and download both models.
+2. Open Settings → GitHub Authentication and connect your GitHub account.
+3. Add a repository from the dashboard. Lazy Review will clone it and index the codebase.
+4. Select a PR from the repository view and run a review.
+
+## License
+
+MIT
