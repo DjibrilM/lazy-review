@@ -9,7 +9,9 @@ import ProjectEntity from '../entities/project.entity.js';
  * been built, so a value > 0 combined with a non-empty `analysis` manifest is
  * the source of truth (a freshly-created project starts at 0).
  */
-export function hasCompletedIndex(project: Pick<ProjectEntity, 'analysis' | 'indexing_version'>): boolean {
+export function hasCompletedIndex(
+  project: Pick<ProjectEntity, 'analysis' | 'indexing_version'>,
+): boolean {
   return Boolean(project?.analysis) && (project.indexing_version || 0) > 0;
 }
 

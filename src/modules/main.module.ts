@@ -55,7 +55,8 @@ export class MainModule {
     // ─────────────────────────────────────────────────────────────────
     this.preloadAiModels().catch((error) => {
       console.warn(
-        chalk.yellow('AI model preload did not complete; models will load on demand.') + ` ${error?.message || error}`,
+        chalk.yellow('AI model preload did not complete; models will load on demand.') +
+          ` ${error?.message || error}`,
       );
     });
 

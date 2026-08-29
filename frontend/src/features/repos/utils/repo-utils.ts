@@ -18,7 +18,9 @@ export function hasCompletedIndex(project?: IndexStateProject | null): boolean {
 
   const hasAnalysis =
     analysis != null &&
-    (typeof analysis === 'string' ? analysis.length > 0 : Object.keys(analysis as object).length > 0);
+    (typeof analysis === 'string'
+      ? analysis.length > 0
+      : Object.keys(analysis as object).length > 0);
 
   return hasAnalysis && (project?.indexing_version ?? 0) > 0;
 }
