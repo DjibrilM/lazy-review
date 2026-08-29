@@ -1,7 +1,7 @@
 {
   "type": "module",
-  "name": "lazy-review",
-  "version": "0.0.1",
+  "name": "@djibrilm/lazy-review",
+  "version": "0.0.2",
   "description": "",
   "bin": {
     "lazy-review": "./dist/bin.js",
@@ -92,7 +92,8 @@
   "license": "MIT",
   "packageManager": "pnpm@10.33.2",
   "files": [
-    "dist"
+    "dist",
+    "logo.png"
   ],
   "pnpm": {
     "onlyBuiltDependencies": [
