@@ -23,10 +23,7 @@ export abstract class BaseAgent {
     // preload. That loader caches the resolved registry IDs process-wide and
     // reads the device setting once, so review/chat reuse the SAME already
     // loaded instances instead of issuing a redundant loadModel round-trip.
-    const { llmModelId, embeddingModelId } = await loadAIModels(
-      this.mainModule,
-      new Set<string>(),
-    );
+    const { llmModelId, embeddingModelId } = await loadAIModels(this.mainModule, new Set<string>());
 
     BaseAgent.cachedModelIds = {
       llmId: llmModelId,

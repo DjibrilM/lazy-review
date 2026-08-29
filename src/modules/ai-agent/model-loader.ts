@@ -62,7 +62,6 @@ export async function loadAIModels(mainModule: MainModule, activeRequestIds: Set
 }
 
 async function doLoadAIModels(mainModule: MainModule, activeRequestIds: Set<string>) {
-
   const LLM_CTX_SIZE = 128000;
   let llmLoadedId: string = (qvacModels as any)[LLM_MODEL_ID]?.modelId ?? LLM_MODEL_ID;
   let embeddingLoadedId: string =
@@ -121,7 +120,8 @@ async function doLoadAIModels(mainModule: MainModule, activeRequestIds: Set<stri
         loadPromise = loadModel({
           modelSrc: qvacEmbedding,
           modelConfig: { ...(deviceConfig ? { device: deviceConfig } : {}) },
-          onProgress: (progress: any) => emitModelLoadProgress(mainModule, 'Embedding model', progress),
+          onProgress: (progress: any) =>
+            emitModelLoadProgress(mainModule, 'Embedding model', progress),
         });
         activeRequestIds.add(loadPromise.requestId);
         embeddingLoadedId = await loadPromise;

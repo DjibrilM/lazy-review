@@ -75,7 +75,9 @@ export const githubService = {
         responseType: 'text',
         timeout: 60000,
       });
-      console.log(`[Frontend] PR Diff fetch successful. Response type: ${typeof res.data}, Length: ${res.data?.length}`);
+      console.log(
+        `[Frontend] PR Diff fetch successful. Response type: ${typeof res.data}, Length: ${res.data?.length}`,
+      );
       return res.data as string;
     } catch (error: any) {
       console.error(`[Frontend] PR Diff fetch failed!`, error, error.response?.data);

@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "lazy-review",
+  "name": "@djibrilm/lazy-review",
   "version": "0.0.1",
   "description": "",
   "bin": {

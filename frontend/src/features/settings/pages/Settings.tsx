@@ -36,7 +36,7 @@ interface DownloadProgress {
 export const Settings = () => {
     const [downloads, setDownloads] = useState<Record<string, DownloadProgress>>({});
 
-    const [expandedModel, setExpandedModel] = useState<string | null>(null);
+    const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
     const [useExperimentalGpu, setUseExperimentalGpu] = useState(false);
     const [isUpdatingGpu, setIsUpdatingGpu] = useState(false);
     const [gpuError, setGpuError] = useState<string | null>(null);
@@ -86,6 +86,22 @@ export const Settings = () => {
             return res.data.data;
         },
     });
+
+    React.useEffect(() => {
+        if (models && models.length > 0) {
+            const hasCachedModel = models.some(m => m.isCached);
+            if (!hasCachedModel) {
+                setExpandedModels(prev => {
+                    if (Object.keys(prev).length === 0) {
+                        const allModels: Record<string, boolean> = {};
+                        models.forEach(m => { allModels[m.id] = true; });
+                        return allModels;
+                    }
+                    return prev;
+                });
+            }
+        }
+    }, [models]);
 
     const {
         data: hardware,
@@ -154,7 +170,7 @@ export const Settings = () => {
         onModelProgress: (data: any) => {
             const progress = data as DownloadProgress;
             setDownloads((prev) => ({ ...prev, [progress.modelId]: progress }));
-            if (progress.status === 'error') setExpandedModel(progress.modelId);
+            if (progress.status === 'error') setExpandedModels(prev => ({ ...prev, [progress.modelId]: true }));
             if (progress.status === 'success' || progress.status === 'error') refetchModels();
         },
     });
@@ -215,8 +231,8 @@ export const Settings = () => {
                                 model={model}
                                 isDownloading={!!downloads[model.id] && downloads[model.id]?.status === 'downloading'}
                                 download={downloads[model.id]}
-                                isExpanded={expandedModel === model.id}
-                                onToggleExpand={() => setExpandedModel(expandedModel === model.id ? null : model.id)}
+                                isExpanded={!!expandedModels[model.id]}
+                                onToggleExpand={() => setExpandedModels(prev => ({ ...prev, [model.id]: !prev[model.id] }))}
                                 status={downloads[model.id]?.status === 'downloading' ? `${downloads[model.id]?.progress}%` : model.isLoaded ? 'Loaded' : model.isCached ? 'Installed' : null}
                                 downloadError={downloads[model.id]?.message}
                                 actionError={modelErrors[model.id]}
