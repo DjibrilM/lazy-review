@@ -23,12 +23,14 @@ If you encounter an error like `Error: Could not locate the bindings file`, it m
 
 **1. Using `pnpm` or `yarn`**
 These block build scripts by default, preventing C++ binaries from downloading.
+
 - **For pnpm:** Run `pnpm approve-builds -g`. Use the `Space` bar to select the blocked packages, then press `Enter`.
 - **For yarn:** Add `enableScripts: true` to your `.yarnrc.yml` before installing.
-*(Alternatively, just install via `npm` instead).*
+  _(Alternatively, just install via `npm` instead)._
 
 **2. Missing Build Tools**
 If you are on a very new or uncommon version of Node.js (e.g. Node 26), prebuilt binaries may not exist yet, forcing the modules to compile from source. If this fails, ensure you have C++ build tools installed:
+
 - **macOS:** Run `xcode-select --install`
 - **Linux:** Run `sudo apt-get install build-essential python3`
 - **Windows:** Run `npm install --global windows-build-tools`
