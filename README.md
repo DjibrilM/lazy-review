@@ -6,6 +6,46 @@
 
 A CLI tool that reviews GitHub pull requests using local AI models. Point it at a repository, select a PR, and it posts a structured review comment back to GitHub — no cloud inference, no API keys beyond GitHub OAuth.
 
+## Installation
+
+Lazy Review relies on several native C++ modules (like `better-sqlite3` and `tree-sitter`) for fast local vector search and code parsing. Because of this, **we strongly recommend using `npm`** for the global installation.
+
+```bash
+npm install -g @djibrilm/lazy-review
+lrv run
+```
+
+This will start the local server on `http://localhost:16500`.
+
+### Troubleshooting Installation Errors
+
+If you encounter an error like `Error: Could not locate the bindings file`, it means the native dependencies failed to compile or download during installation.
+
+**1. Using `pnpm` or `yarn`**
+These block build scripts by default, preventing C++ binaries from downloading.
+- **For pnpm:** Run `pnpm approve-builds -g`. Use the `Space` bar to select the blocked packages, then press `Enter`.
+- **For yarn:** Add `enableScripts: true` to your `.yarnrc.yml` before installing.
+*(Alternatively, just install via `npm` instead).*
+
+**2. Missing Build Tools**
+If you are on a very new or uncommon version of Node.js (e.g. Node 26), prebuilt binaries may not exist yet, forcing the modules to compile from source. If this fails, ensure you have C++ build tools installed:
+- **macOS:** Run `xcode-select --install`
+- **Linux:** Run `sudo apt-get install build-essential python3`
+- **Windows:** Run `npm install --global windows-build-tools`
+
+### From source
+
+Requires Node.js 18+ and pnpm.
+
+```bash
+git clone https://github.com/djibrilm/lazy-review
+cd lazy-review
+pnpm install
+pnpm run dev
+```
+
+This starts both the Express server (port `16500`) and the Vite dev server concurrently.
+
 ## Overview
 
 Lazy Review fetches PR diffs from GitHub and runs them through a multi-agent pipeline on your machine. The output is a structured GitHub PR review comment with categorized findings (`approve` / `request_changes` / `comment`), severity scores, and file-level annotations.
@@ -70,30 +110,6 @@ Tested on a Mac Mini (Apple Silicon). You need ~7 GB of free RAM to hold both mo
 Since the models alone take up around 7 GB and other computer operations also need space, a good environment should have around 12 GB to 16 GB of total RAM.
 
 GPU inference can be toggled in Settings. If the app crashes during model initialization (common on older GPUs), switch to CPU inference.
-
-## Installation
-
-### From npm
-
-```bash
-npm install -g @djibrilm/lazy-review
-lrv run
-```
-
-Starts the server on `http://localhost:16500`.
-
-### From source
-
-Requires Node.js 18+ and pnpm.
-
-```bash
-git clone https://github.com/djibrilm/lazy-review
-cd lazy-review
-pnpm install
-pnpm run dev
-```
-
-This starts both the Express server (port `16500`) and the Vite dev server concurrently.
 
 ## CLI Commands
 

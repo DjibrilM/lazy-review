@@ -1,9 +1,11 @@
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
+import { DATABASE_PATH } from '../../paths.js';
+
 export class VectorDatabaseService {
   private db: Database.Database;
 
-  constructor(databasePath: string = 'database.sqlite') {
+  constructor(databasePath: string = DATABASE_PATH) {
     this.db = new Database(databasePath);
     sqliteVec.load(this.db);
     this.initTables();
