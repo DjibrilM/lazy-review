@@ -6,6 +6,7 @@ import path from 'path';
 import SettingsEntity from '../entities/settings.entity.js';
 import type { MainModule } from '../../main.module.js';
 import { LLM_MODEL_ID, EMBEDDING_MODEL_ID } from '../../../constants.js';
+import { DATABASE_PATH } from '../../../paths.js';
 
 export class SettingsService {
   private repository: Repository<SettingsEntity>;
@@ -109,7 +110,7 @@ export class SettingsService {
     // Calculate SQLite database size
     let sqliteDbSize = 0;
     try {
-      const dbPath = path.resolve(process.cwd(), 'database.sqlite');
+      const dbPath = DATABASE_PATH;
       if (fs.existsSync(dbPath)) {
         const stats = fs.statSync(dbPath);
         sqliteDbSize = stats.size;

@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import ProjectEntity from '../server/entities/project.entity.js';
 import SettingsEntity from '../server/entities/settings.entity.js';
 import { VectorDatabaseService } from './vector-database.service.js';
+import { DATABASE_PATH } from '../../paths.js';
 
 class DatabaseModule {
   appDataSource: DataSource;
@@ -14,7 +15,7 @@ class DatabaseModule {
     this.vectorDatabase = new VectorDatabaseService();
     this.appDataSource = new DataSource({
       type: 'better-sqlite3',
-      database: 'database.sqlite',
+      database: DATABASE_PATH,
       synchronize: true,
       logging: false,
       entities: [ProjectEntity, SettingsEntity],

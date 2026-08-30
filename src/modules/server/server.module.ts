@@ -5,6 +5,7 @@ import { Server as HttpServer } from 'http';
 import open from 'open';
 import chalk from 'chalk';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import ora from 'ora';
 import { MainModule } from '../main.module.js';
 import Routes from './routes/routes.js';
@@ -33,7 +34,9 @@ export class Server {
         interval: 200,
       });
 
-      const clientPath = path.join(process.cwd(), 'dist', 'client');
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const clientPath = path.join(__dirname, '..', '..', 'client');
 
       this.app = express();
       this.app.use(express.json({ limit: '50mb' }));

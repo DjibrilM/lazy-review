@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@djibrilm/lazy-review",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "",
   "bin": {
     "lazy-review": "./dist/bin.js",
