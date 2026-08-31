@@ -45,7 +45,7 @@ export interface AgentCredentialsRequest {
   keys: string[];
 }
 
-const SERVER_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:16500';
+const SERVER_URL = import.meta.env.VITE_BACKEND_URL || (typeof window !== 'undefined' ? `http://${window.location.hostname}:16500` : 'http://localhost:16500');
 
 export const projectsCreationLogsListeners = new Map<string, (data: ProjectCreationLog) => void>();
 export const projectCreationSuccessListeners = new Map<

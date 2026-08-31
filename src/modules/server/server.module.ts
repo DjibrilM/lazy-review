@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
+import os from 'os';
 
 import { Server as HttpServer } from 'http';
 import open from 'open';
@@ -63,11 +64,24 @@ export class Server {
         });
       });
 
-      this.httpServer = this.app.listen(this.port, () => {
+      this.httpServer = this.app.listen(this.port, '0.0.0.0', () => {
+        console.log(chalk.green(`\n[LAZY-REVIEW] Express server listening at:`));
         console.log(
-          chalk.green(`[LAZY-REVIEW] Express server listening at `) +
-            chalk.bold.blue(`http://localhost:${this.port}`),
+          chalk.green(`  ➜  Local:   `) + chalk.bold.cyan(`http://localhost:${this.port}`),
         );
+
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+          for (const iface of interfaces[name]!) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+              console.log(
+                chalk.green(`  ➜  Network: `) +
+                  chalk.bold.cyan(`http://${iface.address}:${this.port}`),
+              );
+            }
+          }
+        }
+        console.log('');
       });
 
       //Init routes
@@ -81,3 +95,6 @@ export class Server {
 }
 
 export default Server;
+
+//open -na "Microsoft Edge" --args --app=http://localhost:16500
+// open -na "Brave Browser" --args --app=http://localhost:16500

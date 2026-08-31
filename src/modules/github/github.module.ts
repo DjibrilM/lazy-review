@@ -30,9 +30,69 @@ class GithubModule {
     this.octokit = new Octokit({
       auth: token,
     });
+
+    this.octokit.hook.error('request', async (error, options) => {
+      if ((error as any).status === 401) {
+        if (this.mainModule?.database) {
+          const repo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
+          const settings = await repo.findOneBy({ id: 1 });
+          if (settings?.githubRefreshToken) {
+            console.log('[GithubModule] Access token expired, attempting to refresh...');
+            try {
+              const newToken = await this.refreshAccessToken(settings.githubRefreshToken);
+              this.updateToken(newToken);
+              options.headers.authorization = `token ${newToken}`;
+              return this.octokit.request(options as any);
+            } catch (refreshError) {
+              console.error('[GithubModule] Failed to refresh token:', refreshError);
+            }
+          }
+        }
+      }
+      throw error;
+    });
+
     this.git = simpleGit({
       config: [`http.extraHeader=Authorization: Bearer ${token}`],
     });
+  }
+
+  async refreshAccessToken(refreshToken: string): Promise<string> {
+    const GITHUB_CLIENT_ID = 'Ov23liPjKTSnrwJIh8KY';
+    const response = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: GITHUB_CLIENT_ID,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to refresh token: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (data.access_token) {
+      if (this.mainModule?.database) {
+        const repo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
+        const settings = await repo.findOneBy({ id: 1 });
+        if (settings) {
+          settings.githubToken = data.access_token;
+          if (data.refresh_token) {
+            settings.githubRefreshToken = data.refresh_token;
+          }
+          settings.githubTokenUpdatedAt = Date.now();
+          await repo.save(settings);
+        }
+      }
+      return data.access_token;
+    }
+    throw new Error('Refresh token exchange failed or returned no access_token');
   }
 
   async init() {
@@ -43,6 +103,31 @@ class GithubModule {
         const settings = await repo.findOneBy({ id: 1 });
         if (settings?.githubToken) {
           this.updateToken(settings.githubToken);
+
+          // Helper for proactive refresh
+          const tenHoursMs = 10 * 60 * 60 * 1000;
+          const checkAndRefresh = async () => {
+            try {
+              const currentSettings = await repo.findOneBy({ id: 1 });
+              if (
+                currentSettings?.githubRefreshToken &&
+                currentSettings.githubTokenUpdatedAt &&
+                Date.now() - currentSettings.githubTokenUpdatedAt >= tenHoursMs
+              ) {
+                console.log('[GithubModule] Token is >= 10h old, refreshing proactively...');
+                const newToken = await this.refreshAccessToken(currentSettings.githubRefreshToken);
+                this.updateToken(newToken);
+              }
+            } catch (err) {
+              console.error('[GithubModule] Proactive token refresh failed', err);
+            }
+          };
+
+          // Check on boot
+          await checkAndRefresh();
+
+          // Check periodically every 1 hour
+          setInterval(checkAndRefresh, 60 * 60 * 1000);
         }
       } catch (err) {
         console.error('Failed to load github token from db', err);

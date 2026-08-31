@@ -28,4 +28,10 @@ export default class SettingsEntity {
 
   @Column({ type: 'text', nullable: true })
   githubToken?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  githubRefreshToken?: string | null;
+
+  @Column({ type: 'integer', nullable: true })
+  githubTokenUpdatedAt?: number | null;
 }

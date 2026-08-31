@@ -59,12 +59,6 @@ export class MainModule {
           ` ${error?.message || error}`,
       );
     });
-
-    console.log(
-      chalk.green.bold(
-        `\n✨ Boot-up complete! QVAC Server is running on port ${this.server.port}\n`,
-      ),
-    );
   }
 
   private async preloadAiModels(): Promise<void> {
