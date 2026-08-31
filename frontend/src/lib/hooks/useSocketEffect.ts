@@ -33,7 +33,9 @@ export const useSocketEffect = ({
   onConnect?: () => void;
   onDisconnect?: () => void;
 }) => {
-  const listenerId = useRef<string>(crypto?.randomUUID?.() || Math.random().toString(36).substring(2, 9));
+  const listenerId = useRef<string>(
+    crypto?.randomUUID?.() || Math.random().toString(36).substring(2, 9),
+  );
 
   useEffect(() => {
     if (onProjectCreationLog) {

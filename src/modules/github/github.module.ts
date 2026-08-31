@@ -30,7 +30,7 @@ class GithubModule {
     this.octokit = new Octokit({
       auth: token,
     });
-    
+
     this.octokit.hook.error('request', async (error, options) => {
       if ((error as any).status === 401) {
         if (this.mainModule?.database) {
@@ -103,7 +103,7 @@ class GithubModule {
         const settings = await repo.findOneBy({ id: 1 });
         if (settings?.githubToken) {
           this.updateToken(settings.githubToken);
-          
+
           // Helper for proactive refresh
           const tenHoursMs = 10 * 60 * 60 * 1000;
           const checkAndRefresh = async () => {

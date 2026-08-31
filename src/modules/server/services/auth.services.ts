@@ -89,7 +89,10 @@ export class AuthService {
     // Use repository.update so the null value is always persisted.
     // TypeORM's save() silently ignores properties set to `undefined`,
     // which would leave a stale token in the DB and keep users "authenticated".
-    await this.repository.update({ id: settings.id }, { githubToken: null, githubRefreshToken: null, githubTokenUpdatedAt: null });
+    await this.repository.update(
+      { id: settings.id },
+      { githubToken: null, githubRefreshToken: null, githubTokenUpdatedAt: null },
+    );
 
     if (this.mainModule?.github) {
       this.mainModule.github.updateToken('');
