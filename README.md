@@ -37,6 +37,7 @@ If you are on a very new or uncommon version of Node.js (e.g. Node 26), prebuilt
 
 **3. EPERM: operation not permitted (macOS/Linux)**
 If you are installing globally using `sudo npm install -g @djibrilm/lazy-review` and see a `Download failed: EPERM` error, `npm` has downgraded permissions during the post-install step. To fix this, tell `npm` to keep root permissions during the installation scripts:
+
 ```bash
 sudo npm install -g @djibrilm/lazy-review --unsafe-perm
 ```
