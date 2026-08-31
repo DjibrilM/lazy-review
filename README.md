@@ -60,6 +60,29 @@ Older GPUs or unsupported drivers may experience failures when attempting to loa
 
 ## 📦 Getting Started
 
+### Option A — Install the CLI from npm (recommended for users)
+
+```bash
+npm install -g lazy-review
+lazy-review run
+```
+
+This starts the Express server (default port `16500`), builds/serves the web UI,
+and opens your browser. Use `lazy-review run -p 8080` to change the port.
+
+Data (SQLite database, downloaded models) is stored in `~/.lazy-review`, so it
+survives upgrades and works no matter which directory you run the CLI from.
+
+Other CLI commands:
+
+```bash
+lazy-review list-projects   # List all tracked projects
+lazy-review delete-project <id>  # Delete a tracked project by ID
+lazy-review --help          # Show all commands
+```
+
+### Option B — Develop from source
+
 ### Prerequisites
 
 - Node.js (v18+)
@@ -70,7 +93,7 @@ Older GPUs or unsupported drivers may experience failures when attempting to loa
 1. Clone the repository:
 
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/DjibrilM/lazy-review.git
    cd lazy-review
    ```
 
@@ -89,6 +112,13 @@ Older GPUs or unsupported drivers may experience failures when attempting to loa
    This will start both the Express backend server (default port `16500`) and the Vite frontend concurrently.
 
 4. Open your browser and navigate to the frontend URL (typically `http://localhost:5173`) to start using Lazy Review!
+
+To build for production and run the packaged app locally:
+
+```bash
+pnpm run prod:build   # builds backend + frontend into dist/
+node dist/bin.js run
+```
 
 ## 📜 License
 

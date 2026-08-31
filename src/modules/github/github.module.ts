@@ -25,10 +25,31 @@ class GithubModule {
     this.git = simpleGit();
   }
 
+  async handleAuthError() {
+    if (this.mainModule && this.mainModule.database) {
+      try {
+        const repo = this.mainModule.database.appDataSource.getRepository(SettingsEntity);
+        await repo.update({ id: 1 }, { githubToken: null });
+        this.currentToken = '';
+        this.octokit = new Octokit();
+        this.git = simpleGit();
+        console.warn('GitHub token expired or invalid. Logged out user.');
+      } catch (err) {
+        console.error('Failed to clear github token', err);
+      }
+    }
+  }
+
   updateToken(token: string) {
     this.currentToken = token;
     this.octokit = new Octokit({
       auth: token,
+    });
+    this.octokit.hook.error('request', async (error: any, options) => {
+      if (error.status === 401) {
+        await this.handleAuthError();
+      }
+      throw error;
     });
     this.git = simpleGit({
       config: [`http.extraHeader=Authorization: Bearer ${token}`],

@@ -45,7 +45,10 @@ export interface AgentCredentialsRequest {
   keys: string[];
 }
 
-const SERVER_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:16500';
+// The UI is served by the same Express server that hosts the Socket.IO gateway,
+// so connect to the current origin by default. VITE_BACKEND_URL remains an
+// escape hatch for custom/remote deployments.
+const SERVER_URL = import.meta.env.VITE_BACKEND_URL || undefined;
 
 export const projectsCreationLogsListeners = new Map<string, (data: ProjectCreationLog) => void>();
 export const projectCreationSuccessListeners = new Map<
@@ -54,7 +57,10 @@ export const projectCreationSuccessListeners = new Map<
 >();
 export const socketConnectListeners = new Map<string, () => void>();
 export const socketDisconnectListeners = new Map<string, () => void>();
-export const agentConfirmationListeners = new Map<string, (data: AgentConfirmationRequest) => void>();
+export const agentConfirmationListeners = new Map<
+  string,
+  (data: AgentConfirmationRequest) => void
+>();
 export const agentFeedbackListeners = new Map<string, (data: AgentFeedbackRequest) => void>();
 export const agentCredentialsListeners = new Map<string, (data: AgentCredentialsRequest) => void>();
 export const modelProgressListeners = new Map<string, (data: any) => void>();

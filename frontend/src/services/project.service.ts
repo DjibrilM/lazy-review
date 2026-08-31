@@ -161,7 +161,7 @@ export const projectService = {
     },
     onChunk: (chunk: string) => void,
   ): Promise<void> {
-    const url = `${http.defaults.baseURL}/projects/${id}/chat`;
+    const url = `/projects/${id}/chat`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

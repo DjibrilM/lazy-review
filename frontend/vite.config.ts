@@ -18,6 +18,9 @@ export default defineConfig({
     ],
   },
   build: {
+    // Note: code-splitting via manualChunks is intentionally left out of this
+    // release. A naive vendor split produced circular chunks (a runtime risk),
+    // and route-level dynamic imports are the safer way to reduce the bundle.
     outDir: '../dist/client',
   },
   server: {

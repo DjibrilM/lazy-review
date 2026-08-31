@@ -8,6 +8,7 @@ import path from 'path';
 import ora from 'ora';
 import { MainModule } from '../main.module.js';
 import Routes from './routes/routes.js';
+import { getClientDistDir } from '../storage-paths.js';
 
 export interface ServerStartOptions {
   port?: number;
@@ -33,7 +34,7 @@ export class Server {
         interval: 200,
       });
 
-      const clientPath = path.join(process.cwd(), 'dist', 'client');
+      const clientPath = getClientDistDir();
 
       this.app = express();
       this.app.use(express.json({ limit: '50mb' }));
